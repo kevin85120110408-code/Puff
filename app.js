@@ -984,10 +984,8 @@ function isImageFile(filename) {
   return imageExtensions.includes(getFileExtension(filename));
 }
 
-sendMessageBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
+// Event listeners will be added after sendMessage is fully defined below
+// Removed duplicate event listeners to prevent multiple sends
 
 // Typing indicator - will be initialized after login
 function initTypingIndicator() {
@@ -1081,86 +1079,7 @@ function initTypingIndicator() {
   console.log('✅ Typing indicator initialized');
 }
 
-async function sendMessage() {
-  const text = messageInput.value.trim();
-
-  if (!text) return;
-
-  // Disable send button and show sending state
-  sendMessageBtn.disabled = true;
-  sendMessageBtn.style.opacity = '0.6';
-  const originalText = sendMessageBtn.textContent;
-  sendMessageBtn.textContent = 'Sending...';
-
-  // Check if user is muted
-  const userSnapshot = await database.ref(`users/${currentUser.uid}`).once('value');
-  const userData = userSnapshot.val();
-
-  if (userData.muted) {
-    showError('You are muted and cannot send messages');
-    // Re-enable button
-    sendMessageBtn.disabled = false;
-    sendMessageBtn.style.opacity = '1';
-    sendMessageBtn.textContent = originalText;
-    return;
-  }
-
-  try {
-    // Extract mentions from message
-    const mentions = messageInput.dataset.mentions ? JSON.parse(messageInput.dataset.mentions) : [];
-
-    await database.ref('messages').push({
-      userId: currentUser.uid,
-      text: text,
-      timestamp: Date.now(),
-      mentions: mentions.length > 0 ? mentions : null
-    });
-
-    // Send notifications to mentioned users
-    if (mentions.length > 0) {
-      const senderName = cachedUsername || currentUser.email;
-      mentions.forEach(async (mentionedUid) => {
-        if (mentionedUid !== currentUser.uid) {
-          await database.ref(`notifications/${mentionedUid}`).push({
-            type: 'mention',
-            from: currentUser.uid,
-            fromName: senderName,
-            message: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
-            timestamp: Date.now(),
-            read: false
-          });
-        }
-      });
-    }
-
-    messageInput.value = '';
-    messageInput.dataset.mentions = '[]';
-
-    // Clear typing status immediately when message is sent
-    isCurrentlyTyping = false;
-    if (typingTimeout) {
-      clearTimeout(typingTimeout);
-    }
-    await database.ref(`typing/${currentUser.uid}`).remove();
-
-    // Check and cleanup old messages if needed
-    checkAndCleanup();
-
-    // Success animation
-    sendMessageBtn.textContent = '✓ Sent';
-    setTimeout(() => {
-      sendMessageBtn.textContent = originalText;
-      sendMessageBtn.disabled = false;
-      sendMessageBtn.style.opacity = '1';
-    }, 500);
-  } catch (error) {
-    showError('Failed to send message');
-    // Re-enable button
-    sendMessageBtn.disabled = false;
-    sendMessageBtn.style.opacity = '1';
-    sendMessageBtn.textContent = originalText;
-  }
-}
+// sendMessage function is defined below with full features (line ~2235)
 
 // Navigation
 adminPanelBtn.addEventListener('click', () => {
@@ -1935,6 +1854,7 @@ function loadAnnouncements() {
 async function renderAnnouncements() {
   const container = document.getElementById('announcementsList');
   const toggleBtn = document.getElementById('toggleAnnouncementsBtn');
+  const showMoreContainer = document.getElementById('showMoreAnnouncements');
 
   if (!container) return;
   container.innerHTML = '';
@@ -1948,6 +1868,13 @@ async function renderAnnouncements() {
       const userSnapshot = await database.ref(`users/${userId}`).once('value');
       userDataMap[userId] = userSnapshot.val();
     }
+  }
+
+  // Show/hide toggle button based on announcement count
+  if (allAnnouncements.length > 3) {
+    if (showMoreContainer) showMoreContainer.style.display = 'block';
+  } else {
+    if (showMoreContainer) showMoreContainer.style.display = 'none';
   }
 
   allAnnouncements.forEach((ann, index) => {
@@ -2352,6 +2279,12 @@ async function sendMessage() {
     sendMessageBtn.textContent = 'Send';
   }
 }
+
+// Add event listeners for sendMessage (only once)
+sendMessageBtn.addEventListener('click', sendMessage);
+messageInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendMessage();
+});
 
 // Upload file to base64 with image compression
 async function uploadFileToBase64(file) {
