@@ -1,0 +1,36 @@
+{
+  "name": "Forum Chat App",
+  "short_name": "Forum",
+  "description": "A real-time forum and chat application",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23000'/><text x='50' y='50' font-size='50' text-anchor='middle' dominant-baseline='central' fill='%23fff'>💬</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23000'/><text x='50' y='50' font-size='60' text-anchor='middle' dominant-baseline='central' fill='%23fff'>💬</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["social", "communication"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "New Message",
+      "short_name": "Message",
+      "description": "Send a new message",
+      "url": "/?action=new-message",
+      "icons": []
+    }
+  ]
+}
+

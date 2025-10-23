@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="A real-time forum and chat application">
+<title>Puff - Senior Reverse Engineer</title>
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="/manifest.json">
+
+<!-- iOS Icons -->
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23000'/><text x='50' y='50' font-size='50' text-anchor='middle' dominant-baseline='central' fill='%23fff'>💬</text></svg>">
+
+<link rel="stylesheet" href="style.css?v=2.0">
+<link rel="stylesheet" href="features.css?v=2.0">
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+<div class="floating-shapes">
+<div class="shape shape-1"></div>
+<div class="shape shape-2"></div>
+<div class="shape shape-3"></div>
+<div class="shape shape-4"></div>
+</div>
+<!-- App Container -->
+<div id="app">
+
+<!-- Login/Register Page -->
+<div class="page-view active" id="authPage">
+<div class="auth-container">
+<div class="auth-box">
+<h1 class="auth-title" id="authTitle">Community Forum</h1>
+<p class="auth-subtitle" id="authSubtitle">Sign in to continue</p>
+
+<!-- Login Form -->
+<div class="auth-form" id="loginForm">
+<div class="form-group">
+<label class="form-label">Email</label>
+<input type="email" id="loginEmail" class="form-input" placeholder="Enter your email">
+</div>
+<div class="form-group">
+<label class="form-label">Password</label>
+<input type="password" id="loginPassword" class="form-input" placeholder="Enter your password">
+</div>
+<div class="form-options">
+<label class="checkbox-label">
+<input type="checkbox" id="rememberMe">
+<span>Remember me</span>
+</label>
+</div>
+<button class="btn btn-primary" id="loginBtn">Sign In</button>
+<p class="form-switch">Don't have an account? <a href="#" id="showRegister">Register</a></p>
+</div>
+
+<!-- Register Form -->
+<div class="auth-form hidden" id="registerForm">
+<div class="form-group">
+<label class="form-label">Username</label>
+<input type="text" id="registerUsername" class="form-input" placeholder="Choose a username" maxlength="20">
+</div>
+<div class="form-group">
+<label class="form-label">Email</label>
+<input type="email" id="registerEmail" class="form-input" placeholder="Enter your email">
+</div>
+<div class="form-group">
+<label class="form-label">Password</label>
+<input type="password" id="registerPassword" class="form-input" placeholder="Create a password">
+</div>
+<button class="btn btn-primary" id="registerBtn">Create Account</button>
+<p class="form-switch">Already have an account? <a href="#" id="showLogin">Sign In</a></p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Forum Page -->
+<div class="page-view" id="forumPage">
+<nav class="navbar">
+<div class="nav-container">
+<h2 class="nav-brand">Forum</h2>
+<div class="nav-actions">
+<button class="nav-btn" id="avatarBtn" title="Change avatar">👤</button>
+<button class="nav-btn" id="adminPanelBtn" style="display: none;">Admin Panel</button>
+<button class="nav-btn" id="logoutBtn">Logout</button>
+</div>
+</div>
+</nav>
+
+<div class="main-content">
+<div class="content-wrapper">
+<!-- Announcements -->
+<section class="section">
+<div class="section-header">
+<h3 class="section-title">📢 Announcements</h3>
+</div>
+<div class="announcements" id="announcementsList">
+<div class="loading-text">Loading announcements...</div>
+</div>
+<div id="showMoreAnnouncements" style="display: none; text-align: center; margin-top: 15px;">
+<button class="btn btn-secondary" id="toggleAnnouncementsBtn">📋 Show More</button>
+</div>
+</section>
+
+<!-- Chat Section -->
+<section class="section">
+<div class="section-header">
+<h3 class="section-title">Discussion</h3>
+<div class="header-actions">
+<input type="text" class="search-input" id="searchInput" placeholder="🔍 Search messages...">
+<span class="online-indicator" id="onlineCount">0 online</span>
+</div>
+</div>
+
+<!-- Online Users List -->
+<div class="online-users-bar" id="onlineUsersList">
+<div class="loading-text">Loading online users...</div>
+</div>
+<div class="chat-box">
+<div class="messages-container" id="messagesContainer">
+<div class="loading-text">Loading messages...</div>
+</div>
+<div class="typing-indicator" id="typingIndicator" style="display: none;">
+<div class="typing-dots">
+<span></span>
+<span></span>
+<span></span>
+</div>
+<span class="typing-text"></span>
+</div>
+<div class="message-input-container" style="position: relative;">
+<!-- Mention Autocomplete -->
+<div class="mention-autocomplete" id="mentionAutocomplete" style="display: none;">
+<div class="mention-autocomplete-list" id="mentionAutocompleteList"></div>
+</div>
+<button class="btn-emoji" id="emojiBtn" title="Add emoji">😊</button>
+<input type="text" id="messageInput" class="message-input" placeholder="Type your message..." maxlength="500">
+<button class="btn btn-send" id="sendMessageBtn">Send</button>
+</div>
+<div class="emoji-picker" id="emojiPicker" style="display: none;">
+<div class="emoji-grid" id="emojiGrid"></div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+
+<!-- Admin Panel -->
+<div class="page-view" id="adminPage">
+<nav class="navbar">
+<div class="nav-container">
+<h2 class="nav-brand">🛡️ 管理员控制台</h2>
+<div class="nav-actions">
+<button class="nav-btn" id="backToForumBtn">← 返回论坛</button>
+</div>
+</div>
+</nav>
+
+<div class="main-content">
+<div class="admin-sidebar">
+<div class="admin-menu">
+<button class="admin-menu-item active" data-tab="overview">
+<span class="menu-icon">📊</span>
+<span class="menu-text">总览</span>
+</button>
+<button class="admin-menu-item" data-tab="users">
+<span class="menu-icon">👥</span>
+<span class="menu-text">用户管理</span>
+</button>
+<button class="admin-menu-item" data-tab="messages">
+<span class="menu-icon">💬</span>
+<span class="menu-text">消息管理</span>
+</button>
+<button class="admin-menu-item" data-tab="announcements">
+<span class="menu-icon">📢</span>
+<span class="menu-text">公告管理</span>
+</button>
+<button class="admin-menu-item" data-tab="logs">
+<span class="menu-icon">📜</span>
+<span class="menu-text">操作日志</span>
+</button>
+<button class="admin-menu-item" data-tab="settings">
+<span class="menu-icon">⚙️</span>
+<span class="menu-text">系统设置</span>
+</button>
+</div>
+</div>
+
+<div class="admin-main">
+<div class="content-wrapper">
+<!-- Overview Tab -->
+<div class="admin-tab active" id="tab-overview">
+<div class="admin-header">
+<h2 class="admin-title">数据总览</h2>
+<p class="admin-subtitle">一目了然地监控您的社区</p>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card">
+<div class="stat-icon">👥</div>
+<div class="stat-value" id="totalUsers">0</div>
+<div class="stat-label">总用户数</div>
+<div class="stat-change positive">本周 +12%</div>
+</div>
+<div class="stat-card">
+<div class="stat-icon">💬</div>
+<div class="stat-value" id="totalMessages">0</div>
+<div class="stat-label">总消息数</div>
+<div class="stat-change positive">本周 +8%</div>
+</div>
+<div class="stat-card">
+<div class="stat-icon">🟢</div>
+<div class="stat-value" id="onlineUsers">0</div>
+<div class="stat-label">在线用户</div>
+<div class="stat-change">实时数据</div>
+</div>
+<div class="stat-card">
+<div class="stat-icon">📊</div>
+<div class="stat-value" id="todayMessages">0</div>
+<div class="stat-label">今日消息</div>
+<div class="stat-change positive">较昨日 +15%</div>
+</div>
+</div>
+
+<div class="admin-grid">
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">最近活动</h3>
+<button class="btn-text" onclick="switchAdminTab('logs')">查看全部</button>
+</div>
+<div class="activity-list" id="recentActivity">
+<div class="loading-text">加载中...</div>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">快捷操作</h3>
+</div>
+<div class="quick-actions">
+<button class="quick-action-btn" onclick="switchAdminTab('announcements')">
+<span class="qa-icon">📢</span>
+<span class="qa-text">发布公告</span>
+</button>
+<button class="quick-action-btn" onclick="switchAdminTab('users')">
+<span class="qa-icon">👥</span>
+<span class="qa-text">管理用户</span>
+</button>
+<button class="quick-action-btn" onclick="switchAdminTab('messages')">
+<span class="qa-icon">💬</span>
+<span class="qa-text">查看消息</span>
+</button>
+<button class="quick-action-btn" onclick="clearAllMessages()">
+<span class="qa-icon">🗑️</span>
+<span class="qa-text">清空消息</span>
+</button>
+</div>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">用户增长图表</h3>
+</div>
+<div class="chart-container">
+<canvas id="userGrowthChart"></canvas>
+</div>
+</div>
+</div>
+
+<!-- Users Tab -->
+<div class="admin-tab" id="tab-users">
+<div class="admin-header">
+<h2 class="admin-title">用户管理</h2>
+<p class="admin-subtitle">管理所有注册用户</p>
+</div>
+
+<div class="admin-controls">
+<input type="text" id="searchUser" class="form-input" placeholder="🔍 搜索用户邮箱或用户名...">
+<select id="userFilter" class="form-input">
+<option value="all">全部用户</option>
+<option value="admin">管理员</option>
+<option value="online">在线</option>
+<option value="banned">已封禁</option>
+<option value="muted">已禁言</option>
+</select>
+</div>
+
+<div class="users-table" id="usersTable">
+<div class="loading-text">加载用户中...</div>
+</div>
+</div>
+
+<!-- Messages Tab -->
+<div class="admin-tab" id="tab-messages">
+<div class="admin-header">
+<h2 class="admin-title">消息管理</h2>
+<p class="admin-subtitle">监控和管理所有消息</p>
+</div>
+
+<div class="admin-controls">
+<input type="text" id="searchMessage" class="form-input" placeholder="🔍 搜索消息...">
+<button class="btn btn-danger" onclick="clearAllMessages()">🗑️ 清空所有消息</button>
+</div>
+
+<div class="messages-admin-list" id="messagesAdminList">
+<div class="loading-text">加载消息中...</div>
+</div>
+</div>
+
+<!-- Announcements Tab -->
+<div class="admin-tab" id="tab-announcements">
+<div class="admin-header">
+<h2 class="admin-title">公告管理</h2>
+<p class="admin-subtitle">创建和管理公告</p>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">创建新公告</h3>
+</div>
+<div class="form-group">
+<label class="form-label">标题</label>
+<input type="text" id="announcementTitle" class="form-input" placeholder="公告标题..." maxlength="100">
+</div>
+<div class="form-group">
+<label class="form-label">内容</label>
+<textarea id="announcementText" class="form-textarea" placeholder="编写公告内容..." maxlength="1000" rows="5"></textarea>
+</div>
+<div class="form-group">
+<label class="form-label">图片（可选）</label>
+<input type="file" id="announcementImage" accept="image/*" style="display: none;">
+<button class="btn btn-secondary" id="uploadAnnouncementImageBtn">📷 上传图片</button>
+<div id="announcementImagePreview" class="image-preview"></div>
+</div>
+<div class="form-group">
+<label class="form-label">徽章类型</label>
+<select id="announcementBadge" class="form-input">
+<option value="Important">🔴 重要</option>
+<option value="Info">ℹ️ 信息</option>
+<option value="Update">🔄 更新</option>
+<option value="Event">🎉 活动</option>
+<option value="Warning">⚠️ 警告</option>
+</select>
+</div>
+<button class="btn btn-primary" id="postAnnouncementBtn">📢 发布公告</button>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">当前公告</h3>
+</div>
+<div id="announcementsManager">
+<div class="loading-text">加载公告中...</div>
+</div>
+</div>
+</div>
+
+<!-- Activity Logs Tab -->
+<div class="admin-tab" id="tab-logs">
+<div class="admin-header">
+<h2 class="admin-title">操作日志</h2>
+<p class="admin-subtitle">追踪所有管理员操作和系统事件</p>
+</div>
+
+<div class="admin-controls">
+<select id="logFilter" class="form-input">
+<option value="all">全部操作</option>
+<option value="BAN">封禁</option>
+<option value="UNBAN">解封</option>
+<option value="MUTE">禁言</option>
+<option value="UNMUTE">解除禁言</option>
+<option value="DELETE">删除</option>
+</select>
+<button class="btn btn-secondary" onclick="exportLogs()">📥 导出日志</button>
+</div>
+
+<div class="logs-list" id="logsList">
+<div class="loading-text">加载日志中...</div>
+</div>
+</div>
+
+<!-- Settings Tab -->
+<div class="admin-tab" id="tab-settings">
+<div class="admin-header">
+<h2 class="admin-title">系统设置</h2>
+<p class="admin-subtitle">配置论坛设置</p>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">常规设置</h3>
+</div>
+<div class="settings-list">
+<div class="setting-item">
+<div class="setting-info">
+<div class="setting-name">论坛名称</div>
+<div class="setting-desc">更改论坛的名称</div>
+</div>
+<input type="text" class="form-input" id="forumName" value="社区论坛">
+</div>
+<div class="setting-item">
+<div class="setting-info">
+<div class="setting-name">用户注册</div>
+<div class="setting-desc">允许新用户注册</div>
+</div>
+<label class="toggle-switch">
+<input type="checkbox" id="allowRegistration" checked>
+<span class="toggle-slider"></span>
+</label>
+</div>
+<div class="setting-item">
+<div class="setting-info">
+<div class="setting-name">敏感词过滤</div>
+<div class="setting-desc">自动过滤不当内容</div>
+</div>
+<label class="toggle-switch">
+<input type="checkbox" id="profanityFilter" checked>
+<span class="toggle-slider"></span>
+</label>
+</div>
+<div class="setting-item">
+<div class="setting-info">
+<div class="setting-name">速率限制</div>
+<div class="setting-desc">限制消息频率以防止刷屏</div>
+</div>
+<label class="toggle-switch">
+<input type="checkbox" id="rateLimiting" checked>
+<span class="toggle-slider"></span>
+</label>
+</div>
+</div>
+<button class="btn btn-primary">💾 保存设置</button>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">危险区域</h3>
+</div>
+<div class="danger-zone">
+<button class="btn btn-danger" onclick="clearAllMessages()">🗑️ 清空所有消息</button>
+<button class="btn btn-danger" onclick="resetDatabase()">⚠️ 重置数据库</button>
+<button class="btn btn-danger" onclick="exportData()">📥 导出所有数据</button>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>
+
+
+</div>
+
+<!-- Announcement Detail Modal -->
+<div class="modal" id="announcementDetailModal">
+<div class="modal-content announcement-detail-modal">
+<div class="modal-header">
+<h3 class="modal-title" id="announcementDetailTitle">Announcement</h3>
+<button class="modal-close" id="closeAnnouncementDetailModal">✕</button>
+</div>
+<div class="modal-body">
+<div class="announcement-detail-meta" id="announcementDetailMeta"></div>
+<div class="announcement-detail-image" id="announcementDetailImage"></div>
+<div class="announcement-detail-content" id="announcementDetailContent"></div>
+</div>
+</div>
+</div>
+
+<!-- Avatar Upload Modal -->
+<div class="modal" id="avatarModal">
+<div class="modal-content">
+<div class="modal-header">
+<h3 class="modal-title">Change Avatar</h3>
+<button class="modal-close" id="closeAvatarModal">✕</button>
+</div>
+<div class="modal-body">
+<div class="avatar-preview-container">
+<div class="avatar-preview" id="avatarPreview"></div>
+</div>
+<div class="avatar-options">
+<div class="avatar-option-section">
+<h4 class="avatar-option-title">Upload Custom Image</h4>
+<input type="file" id="avatarFileInput" accept="image/*" style="display: none;">
+<button class="btn btn-secondary" id="uploadAvatarBtn">📁 Choose Image</button>
+<p class="avatar-hint">Recommended: Square image, max 2MB</p>
+</div>
+<div class="avatar-option-section">
+<h4 class="avatar-option-title">Or Choose a Color</h4>
+<div class="color-picker" id="colorPicker">
+<div class="color-option" data-color="#FF6B6B" style="background: #FF6B6B;"></div>
+<div class="color-option" data-color="#4ECDC4" style="background: #4ECDC4;"></div>
+<div class="color-option" data-color="#45B7D1" style="background: #45B7D1;"></div>
+<div class="color-option" data-color="#FFA07A" style="background: #FFA07A;"></div>
+<div class="color-option" data-color="#98D8C8" style="background: #98D8C8;"></div>
+<div class="color-option" data-color="#F7DC6F" style="background: #F7DC6F;"></div>
+<div class="color-option" data-color="#BB8FCE" style="background: #BB8FCE;"></div>
+<div class="color-option" data-color="#85C1E2" style="background: #85C1E2;"></div>
+<div class="color-option" data-color="#F8B739" style="background: #F8B739;"></div>
+<div class="color-option" data-color="#52B788" style="background: #52B788;"></div>
+</div>
+</div>
+</div>
+<button class="btn btn-primary" id="saveAvatarBtn">Save Avatar</button>
+</div>
+</div>
+</div>
+
+<!-- User Profile Modal -->
+<div class="modal" id="userProfileModal">
+<div class="modal-content user-profile-modal">
+<div class="modal-header">
+<h3>用户资料</h3>
+<button class="modal-close" onclick="closeUserProfile()">✕</button>
+</div>
+<div class="user-profile-content">
+<div class="profile-header">
+<div class="profile-avatar" id="profileAvatar"></div>
+<div class="profile-info">
+<h2 class="profile-username" id="profileUsername"></h2>
+<p class="profile-status" id="profileStatus"></p>
+</div>
+</div>
+<div class="profile-stats">
+<div class="stat-item">
+<div class="stat-number" id="profileMessageCount">0</div>
+<div class="stat-label">消息数</div>
+</div>
+<div class="stat-item">
+<div class="stat-number" id="profileLikesReceived">0</div>
+<div class="stat-label">获赞数</div>
+</div>
+<div class="stat-item">
+<div class="stat-number" id="profileJoinDate">-</div>
+<div class="stat-label">加入时间</div>
+</div>
+</div>
+<div class="profile-badges" id="profileBadges" style="display: none;"></div>
+<div class="profile-level" id="profileLevel" style="display: none;"></div>
+<div class="profile-actions" id="profileActions"></div>
+</div>
+</div>
+</div>
+
+<!-- Typing Indicator -->
+<div class="typing-indicator" id="typingIndicator" style="display: none;">
+<span class="typing-user"></span> 正在输入<span class="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+</div>
+
+<!-- End App -->
+<script>
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBKnlUua7B6gzttWKXAhwHRLGql0yGweXY",
+  authDomain: "puff-forum.firebaseapp.com",
+  databaseURL: "https://puff-forum-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "puff-forum",
+  storageBucket: "puff-forum.firebasestorage.app",
+  messagingSenderId: "875683260753",
+  appId: "1:875683260753:web:494cc5973e166c74858b70"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const database = firebase.database();
+const storage = firebase.storage();
+
+// Create admin account on first load
+async function initializeAdmin() {
+  try {
+    // Try to create admin account
+    await auth.createUserWithEmailAndPassword('admin@puff.com', '123456');
+    const user = auth.currentUser;
+
+    await database.ref(`users/${user.uid}`).set({
+      username: 'Admin',
+      email: 'admin@puff.com',
+      role: 'admin',
+      createdAt: Date.now(),
+      banned: false,
+      muted: false
+    });
+
+    console.log('Admin account created');
+  } catch (error) {
+    // Admin account already exists
+    console.log('Admin account already exists');
+  }
+}
+
+// Initialize admin on page load
+initializeAdmin();
+</script>
+
+<!-- PWA Service Worker Registration -->
+<script>
+// Register Service Worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => {
+        console.log('✅ Service Worker registered:', registration.scope);
+
+        // Check for updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New service worker available
+              if (confirm('New version available! Reload to update?')) {
+                window.location.reload();
+              }
+            }
+          });
+        });
+      })
+      .catch((error) => {
+        console.log('❌ Service Worker registration failed:', error);
+      });
+  });
+}
+
+// Install prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+
+  // Show install button
+  showInstallPrompt();
+});
+
+function showInstallPrompt() {
+  // Create install button
+  const installBtn = document.createElement('button');
+  installBtn.className = 'install-pwa-btn';
+  installBtn.innerHTML = '📱 Install App';
+  installBtn.onclick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response: ${outcome}`);
+      deferredPrompt = null;
+      installBtn.remove();
+    }
+  };
+
+  // Add to page (only if logged in)
+  const navbar = document.querySelector('.navbar');
+  if (navbar && !document.querySelector('.install-pwa-btn')) {
+    navbar.appendChild(installBtn);
+  }
+}
+
+// Handle app installed
+window.addEventListener('appinstalled', () => {
+  console.log('✅ PWA installed successfully');
+  deferredPrompt = null;
+  const installBtn = document.querySelector('.install-pwa-btn');
+  if (installBtn) installBtn.remove();
+});
+</script>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+<script src="app.js?v=2.0"></script>
+<script src="features.js?v=2.0"></script>
+</body>
+</html>
