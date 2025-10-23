@@ -1707,22 +1707,32 @@ async function renderAnnouncements() {
     const isAdmin = userData?.role === 'admin';
     const authorClass = isAdmin ? 'announcement-author-name admin' : 'announcement-author-name';
 
-    // File preview (show first 3 files)
+    // File preview (show first 2 files as cards)
     let filesPreview = '';
     if (ann.files && ann.files.length > 0) {
-      const previewFiles = ann.files.slice(0, 3);
+      const previewFiles = ann.files.slice(0, 2);
       filesPreview = '<div class="announcement-files-preview">';
       previewFiles.forEach(file => {
+        const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
+        const ext = getFileExtension(file.name);
+        const iconColor = getFileIconColor(ext);
+
         if (isImageFile(file.name)) {
-          filesPreview += `<div class="file-preview-thumb"><img src="${file.data}" alt="${escapeHtml(file.name)}" title="${escapeHtml(file.name)}"></div>`;
+          filesPreview += `<div class="file-preview-thumb"><img src="${file.data}" alt="${escapeHtml(displayName)}" title="${escapeHtml(displayName)}"></div>`;
         } else {
-          const ext = getFileExtension(file.name);
-          const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
-          filesPreview += `<div class="file-preview-icon" title="${escapeHtml(displayName)}">${ext || 'FILE'}</div>`;
+          filesPreview += `
+            <div class="announcement-file-card">
+              <div class="announcement-file-icon" style="background: ${iconColor};">${ext || 'FILE'}</div>
+              <div class="announcement-file-info">
+                <div class="announcement-file-name">${escapeHtml(displayName.length > 20 ? displayName.substring(0, 20) + '...' : displayName)}</div>
+                <div class="announcement-file-size">${formatFileSize(file.size)}</div>
+              </div>
+            </div>
+          `;
         }
       });
-      if (ann.files.length > 3) {
-        filesPreview += `<div class="file-preview-more" title="${ann.files.length} files total">+${ann.files.length - 3}</div>`;
+      if (ann.files.length > 2) {
+        filesPreview += `<div class="announcement-file-more">+${ann.files.length - 2} more</div>`;
       }
       filesPreview += '</div>';
     }
