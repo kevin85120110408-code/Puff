@@ -1714,14 +1714,15 @@ async function renderAnnouncements() {
       filesPreview = '<div class="announcement-files-preview">';
       previewFiles.forEach(file => {
         if (isImageFile(file.name)) {
-          filesPreview += `<div class="file-preview-thumb"><img src="${file.data}" alt="${escapeHtml(file.name)}"></div>`;
+          filesPreview += `<div class="file-preview-thumb"><img src="${file.data}" alt="${escapeHtml(file.name)}" title="${escapeHtml(file.name)}"></div>`;
         } else {
           const ext = getFileExtension(file.name);
-          filesPreview += `<div class="file-preview-icon">${ext || 'FILE'}</div>`;
+          const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
+          filesPreview += `<div class="file-preview-icon" title="${escapeHtml(displayName)}">${ext || 'FILE'}</div>`;
         }
       });
       if (ann.files.length > 3) {
-        filesPreview += `<div class="file-preview-more">+${ann.files.length - 3}</div>`;
+        filesPreview += `<div class="file-preview-more" title="${ann.files.length} files total">+${ann.files.length - 3}</div>`;
       }
       filesPreview += '</div>';
     }
