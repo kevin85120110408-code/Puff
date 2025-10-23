@@ -2077,7 +2077,7 @@ function showAnnouncementDetail(announcement, userData) {
     image.innerHTML = '';
   }
 
-  let contentHtml = `<p>${escapeHtml(announcement.text)}</p>`;
+  let contentHtml = `<div style="margin: 0; padding: 0;">${escapeHtml(announcement.text)}</div>`;
 
   // Add files if any
   if (announcement.files && announcement.files.length > 0) {

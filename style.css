@@ -634,13 +634,13 @@ input[type="checkbox"] {
     justify-content: space-between;
     align-items: center;
     gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     padding-bottom: 15px;
     border-bottom: 2px solid #e0e0e0;
 }
 
 .announcement-detail-image {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 .announcement-detail-image img {
@@ -655,6 +655,27 @@ input[type="checkbox"] {
     line-height: 1.6;
     color: #333333;
     white-space: pre-wrap;
+    margin-bottom: 0;
+}
+
+.announcement-detail-content > div:first-child {
+    margin: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+}
+
+.announcement-detail-content p {
+    margin: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 0 !important;
+}
+
+.announcement-detail-content .message-file {
+    margin-top: 8px !important;
+}
+
+.announcement-detail-content .message-file-attachment {
+    margin-top: 8px !important;
 }
 
 .announcement-header {
@@ -1316,16 +1337,16 @@ input[type="checkbox"] {
 }
 
 .message-file {
-    margin-top: 12px;
+    margin-top: 8px;
     margin-left: 0;
-    padding: 16px 20px;
+    padding: 10px 14px;
     background: #f5f7fa;
-    border-radius: 12px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     width: 100%;
-    max-width: 500px;
+    max-width: 380px;
     transition: all 0.2s ease;
     border: 1px solid #e8ecf0;
 }
@@ -1336,16 +1357,16 @@ input[type="checkbox"] {
 }
 
 .message-file-icon {
-    width: 56px;
-    height: 56px;
+    width: 40px;
+    height: 40px;
     background: #5b9bd5;
-    border-radius: 8px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 12px;
     text-transform: uppercase;
     flex-shrink: 0;
     letter-spacing: 0.5px;
@@ -1356,11 +1377,11 @@ input[type="checkbox"] {
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
 }
 
 .message-file-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 400;
     color: #24292f;
     overflow: hidden;
@@ -1371,7 +1392,7 @@ input[type="checkbox"] {
 }
 
 .message-file-size {
-    font-size: 13px;
+    font-size: 12px;
     color: #57606a;
     line-height: 1.3;
 }
@@ -1381,7 +1402,7 @@ input[type="checkbox"] {
     color: #0969da;
     border: none;
     padding: 0;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1572,12 +1593,12 @@ input[type="checkbox"] {
 
 /* Announcement modal file display */
 .modal-content .message-file {
-    margin-top: 10px;
+    margin-top: 8px;
     max-width: 100%;
 }
 
 .modal-content .message-file-attachment {
-    margin-top: 10px;
+    margin-top: 8px;
 }
 
 .modal-content .message-image {
