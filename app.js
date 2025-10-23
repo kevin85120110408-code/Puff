@@ -66,12 +66,173 @@ function showPage(page) {
   page.classList.add('active');
 }
 
+// Custom Modal System
+const customModalOverlay = document.getElementById('customModalOverlay');
+const customModal = document.getElementById('customModal');
+const customModalIcon = document.getElementById('customModalIcon');
+const customModalTitle = document.getElementById('customModalTitle');
+const customModalMessage = document.getElementById('customModalMessage');
+const customModalInputContainer = document.getElementById('customModalInputContainer');
+const customModalInput = document.getElementById('customModalInput');
+const customModalButtons = document.getElementById('customModalButtons');
+
+function showCustomModal(options) {
+  const {
+    icon = '💬',
+    title = '',
+    message = '',
+    type = 'alert', // 'alert', 'confirm', 'prompt'
+    inputPlaceholder = '',
+    confirmText = 'OK',
+    cancelText = 'Cancel',
+    dangerButton = false,
+    onConfirm = () => {},
+    onCancel = () => {}
+  } = options;
+
+  // Set content
+  customModalIcon.textContent = icon;
+  customModalTitle.textContent = title;
+  customModalMessage.textContent = message;
+
+  // Handle input for prompt
+  if (type === 'prompt') {
+    customModalInputContainer.style.display = 'block';
+    customModalInput.value = '';
+    customModalInput.placeholder = inputPlaceholder;
+  } else {
+    customModalInputContainer.style.display = 'none';
+  }
+
+  // Clear previous buttons
+  customModalButtons.innerHTML = '';
+
+  // Create buttons based on type
+  if (type === 'alert') {
+    const okBtn = document.createElement('button');
+    okBtn.className = 'custom-modal-btn custom-modal-btn-primary';
+    okBtn.textContent = confirmText;
+    okBtn.onclick = () => {
+      hideCustomModal();
+      onConfirm();
+    };
+    customModalButtons.appendChild(okBtn);
+  } else if (type === 'confirm') {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'custom-modal-btn custom-modal-btn-secondary';
+    cancelBtn.textContent = cancelText;
+    cancelBtn.onclick = () => {
+      hideCustomModal();
+      onCancel();
+    };
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = `custom-modal-btn ${dangerButton ? 'custom-modal-btn-danger' : 'custom-modal-btn-primary'}`;
+    confirmBtn.textContent = confirmText;
+    confirmBtn.onclick = () => {
+      hideCustomModal();
+      onConfirm();
+    };
+
+    customModalButtons.appendChild(cancelBtn);
+    customModalButtons.appendChild(confirmBtn);
+  } else if (type === 'prompt') {
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'custom-modal-btn custom-modal-btn-secondary';
+    cancelBtn.textContent = cancelText;
+    cancelBtn.onclick = () => {
+      hideCustomModal();
+      onCancel();
+    };
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'custom-modal-btn custom-modal-btn-primary';
+    confirmBtn.textContent = confirmText;
+    confirmBtn.onclick = () => {
+      const value = customModalInput.value;
+      hideCustomModal();
+      onConfirm(value);
+    };
+
+    customModalButtons.appendChild(cancelBtn);
+    customModalButtons.appendChild(confirmBtn);
+
+    // Focus input after modal shows
+    setTimeout(() => customModalInput.focus(), 300);
+  }
+
+  // Show modal
+  customModalOverlay.classList.add('show');
+
+  // Close on overlay click
+  customModalOverlay.onclick = (e) => {
+    if (e.target === customModalOverlay) {
+      hideCustomModal();
+      onCancel();
+    }
+  };
+
+  // Close on Escape key
+  const escapeHandler = (e) => {
+    if (e.key === 'Escape') {
+      hideCustomModal();
+      onCancel();
+      document.removeEventListener('keydown', escapeHandler);
+    }
+  };
+  document.addEventListener('keydown', escapeHandler);
+}
+
+function hideCustomModal() {
+  customModalOverlay.classList.remove('show');
+}
+
+// Replace alert, confirm, prompt with custom modals
 function showError(message) {
-  alert(message);
+  showCustomModal({
+    icon: '❌',
+    title: 'Error',
+    message: message,
+    type: 'alert',
+    confirmText: 'OK'
+  });
 }
 
 function showSuccess(message) {
-  alert(message);
+  showCustomModal({
+    icon: '✅',
+    title: 'Success',
+    message: message,
+    type: 'alert',
+    confirmText: 'OK'
+  });
+}
+
+function showConfirm(message, onConfirm, onCancel = () => {}) {
+  showCustomModal({
+    icon: '❓',
+    title: 'Confirm',
+    message: message,
+    type: 'confirm',
+    confirmText: 'Yes',
+    cancelText: 'No',
+    onConfirm: onConfirm,
+    onCancel: onCancel
+  });
+}
+
+function showPrompt(message, placeholder = '', onConfirm, onCancel = () => {}) {
+  showCustomModal({
+    icon: '✏️',
+    title: 'Input Required',
+    message: message,
+    type: 'prompt',
+    inputPlaceholder: placeholder,
+    confirmText: 'Submit',
+    cancelText: 'Cancel',
+    onConfirm: onConfirm,
+    onCancel: onCancel
+  });
 }
 
 // Update version display on page
@@ -979,16 +1140,16 @@ async function loadMessagesAdmin() {
 
 // Delete message from admin panel
 window.deleteMessageAdmin = async function(messageId) {
-  if (!confirm('确定要删除这条消息吗？')) return;
-
-  try {
-    await database.ref(`messages/${messageId}`).remove();
-    await logAdminAction('DELETE', messageId, { messageId });
-    showSuccess('消息已删除');
-    loadMessagesAdmin();
-  } catch (error) {
-    showError('删除消息失败');
-  }
+  showConfirm('确定要删除这条消息吗？', async () => {
+    try {
+      await database.ref(`messages/${messageId}`).remove();
+      await logAdminAction('DELETE', messageId, { messageId });
+      showSuccess('消息已删除');
+      loadMessagesAdmin();
+    } catch (error) {
+      showError('删除消息失败');
+    }
+  });
 };
 
 // Load Admin Logs
@@ -1029,16 +1190,25 @@ async function loadAdminLogs() {
 
 // Clear all messages
 window.clearAllMessages = async function() {
-  if (!confirm('⚠️ 确定要删除所有消息吗？此操作无法撤销！')) return;
-
-  try {
-    await database.ref('messages').remove();
-    await logAdminAction('CLEAR_ALL', 'all_messages', { action: 'cleared all messages' });
-    showSuccess('所有消息已清空');
-    loadMessagesAdmin();
-  } catch (error) {
-    showError('清空消息失败');
-  }
+  showCustomModal({
+    icon: '⚠️',
+    title: 'Danger',
+    message: '确定要删除所有消息吗？此操作无法撤销！',
+    type: 'confirm',
+    confirmText: 'Delete All',
+    cancelText: 'Cancel',
+    dangerButton: true,
+    onConfirm: async () => {
+      try {
+        await database.ref('messages').remove();
+        await logAdminAction('CLEAR_ALL', 'all_messages', { action: 'cleared all messages' });
+        showSuccess('所有消息已清空');
+        loadMessagesAdmin();
+      } catch (error) {
+        showError('清空消息失败');
+      }
+    }
+  });
 };
 
 // Export logs
@@ -1067,24 +1237,41 @@ window.exportLogs = async function() {
 
 // Reset database
 window.resetDatabase = async function() {
-  if (!confirm('⚠️⚠️⚠️ 危险！这将删除所有数据，包括用户、消息和公告。你确定吗？')) return;
-  if (!confirm('这是最后的机会。在下一个提示中输入"是"以确认。')) return;
-
-  const confirmation = prompt('输入"是"以确认重置数据库：');
-  if (confirmation !== '是') {
-    showError('重置已取消');
-    return;
-  }
-
-  try {
-    await database.ref('messages').remove();
-    await database.ref('announcements').remove();
-    await database.ref('adminLogs').remove();
-    showSuccess('数据库重置完成');
-    loadAdminDashboard();
-  } catch (error) {
-    showError('重置数据库失败');
-  }
+  showCustomModal({
+    icon: '⚠️',
+    title: 'DANGER!',
+    message: '这将删除所有数据，包括用户、消息和公告。你确定吗？',
+    type: 'confirm',
+    confirmText: 'Continue',
+    cancelText: 'Cancel',
+    dangerButton: true,
+    onConfirm: () => {
+      showCustomModal({
+        icon: '⚠️',
+        title: 'Last Warning',
+        message: '这是最后的机会。输入"是"以确认重置数据库。',
+        type: 'prompt',
+        inputPlaceholder: '输入"是"',
+        confirmText: 'Reset',
+        cancelText: 'Cancel',
+        onConfirm: async (value) => {
+          if (value !== '是') {
+            showError('重置已取消');
+            return;
+          }
+          try {
+            await database.ref('messages').remove();
+            await database.ref('announcements').remove();
+            await database.ref('adminLogs').remove();
+            showSuccess('数据库重置完成');
+            loadAdminDashboard();
+          } catch (error) {
+            showError('重置数据库失败');
+          }
+        }
+      });
+    }
+  });
 };
 
 // Export all data
@@ -1436,17 +1623,15 @@ window.toggleLike = async function(messageId) {
 
 // Delete Message
 window.deleteMessage = async function(messageId) {
-  if (!confirm('Are you sure you want to delete this message?')) {
-    return;
-  }
-
-  try {
-    await database.ref(`messages/${messageId}`).remove();
-    showSuccess('Message deleted');
-  } catch (error) {
-    console.error('Delete error:', error);
-    showError('Failed to delete message');
-  }
+  showConfirm('Are you sure you want to delete this message?', async () => {
+    try {
+      await database.ref(`messages/${messageId}`).remove();
+      showSuccess('Message deleted');
+    } catch (error) {
+      console.error('Delete error:', error);
+      showError('Failed to delete message');
+    }
+  });
 };
 
 // Edit Message
@@ -2269,14 +2454,14 @@ window.editAnnouncement = function(id, title, text, badge) {
 };
 
 window.deleteAnnouncement = async function(id) {
-  if (!confirm('Delete this announcement?')) return;
-
-  try {
-    await database.ref(`announcements/${id}`).remove();
-    showSuccess('Announcement deleted');
-  } catch (error) {
-    showError('Failed to delete announcement');
-  }
+  showConfirm('Delete this announcement?', async () => {
+    try {
+      await database.ref(`announcements/${id}`).remove();
+      showSuccess('Announcement deleted');
+    } catch (error) {
+      showError('Failed to delete announcement');
+    }
+  });
 };
 
 // Load announcements manager when admin page is shown
@@ -3377,36 +3562,42 @@ if (updateVersionBtn) {
       return;
     }
 
-    if (!confirm(`确定要将版本更新到 v${newVersion} 吗?\n\n这将强制所有在线用户刷新页面!`)) {
-      return;
-    }
+    showCustomModal({
+      icon: '🚀',
+      title: 'Update Version',
+      message: `确定要将版本更新到 v${newVersion} 吗?\n\n这将强制所有在线用户刷新页面!`,
+      type: 'confirm',
+      confirmText: 'Update',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          updateVersionBtn.disabled = true;
+          updateVersionBtn.textContent = '更新中...';
 
-    try {
-      updateVersionBtn.disabled = true;
-      updateVersionBtn.textContent = '更新中...';
+          // Update version in Firebase
+          await database.ref('appVersion').set({
+            current: newVersion,
+            updatedAt: Date.now(),
+            updatedBy: currentUser.uid
+          });
 
-      // Update version in Firebase
-      await database.ref('appVersion').set({
-        current: newVersion,
-        updatedAt: Date.now(),
-        updatedBy: currentUser.uid
-      });
+          showSuccess(`版本已更新到 v${newVersion}!`);
 
-      showSuccess(`版本已更新到 v${newVersion}!`);
+          // Update display
+          currentVersionDisplay.textContent = `当前: v${newVersion}`;
+          appVersionInput.value = '';
+          appVersionInput.placeholder = newVersion;
 
-      // Update display
-      currentVersionDisplay.textContent = `当前: v${newVersion}`;
-      appVersionInput.value = '';
-      appVersionInput.placeholder = newVersion;
+          console.log('✅ Version updated to:', newVersion);
 
-      console.log('✅ Version updated to:', newVersion);
-
-    } catch (error) {
-      console.error('❌ Failed to update version:', error);
-      showError('更新版本失败: ' + error.message);
-    } finally {
-      updateVersionBtn.disabled = false;
-      updateVersionBtn.textContent = '更新版本';
-    }
+        } catch (error) {
+          console.error('❌ Failed to update version:', error);
+          showError('更新版本失败: ' + error.message);
+        } finally {
+          updateVersionBtn.disabled = false;
+          updateVersionBtn.textContent = '更新版本';
+        }
+      }
+    });
   });
 }
