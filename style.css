@@ -486,6 +486,57 @@ input[type="checkbox"] {
     transition: transform 0.3s ease;
 }
 
+/* Announcement files preview */
+.announcement-files-preview {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.file-preview-thumb {
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+}
+
+.file-preview-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.file-preview-icon {
+    width: 60px;
+    height: 60px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+}
+
+.file-preview-more {
+    width: 60px;
+    height: 60px;
+    background: #f0f0f0;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+}
+
 .announcement-image-thumb:hover {
     transform: scale(1.05);
 }
@@ -1453,6 +1504,49 @@ input[type="checkbox"] {
 
 .message-folder-contents .message-file-attachment {
     margin-top: 8px;
+}
+
+/* Announcement modal file display */
+.modal-content .message-file {
+    margin-top: 12px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+}
+
+.modal-content .message-file-attachment {
+    margin-top: 12px;
+}
+
+.modal-content .message-image {
+    max-width: 100%;
+    border-radius: 8px;
+}
+
+.modal-content .message-folder {
+    margin-top: 12px;
+    background: #fff9e6;
+    border: 2px solid #FDB022;
+}
+
+/* Announcement item file display */
+.announcement-item .message-file {
+    margin-top: 12px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+}
+
+.announcement-item .message-file-attachment {
+    margin-top: 12px;
+}
+
+.announcement-item .message-image {
+    max-width: 300px;
+    max-height: 200px;
+    border-radius: 8px;
+}
+
+.announcement-item .message-folder {
+    margin-top: 12px;
 }
 
 /* Emoji button and picker removed */

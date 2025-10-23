@@ -1707,6 +1707,25 @@ async function renderAnnouncements() {
     const isAdmin = userData?.role === 'admin';
     const authorClass = isAdmin ? 'announcement-author-name admin' : 'announcement-author-name';
 
+    // File preview (show first 3 files)
+    let filesPreview = '';
+    if (ann.files && ann.files.length > 0) {
+      const previewFiles = ann.files.slice(0, 3);
+      filesPreview = '<div class="announcement-files-preview">';
+      previewFiles.forEach(file => {
+        if (isImageFile(file.name)) {
+          filesPreview += `<div class="file-preview-thumb"><img src="${file.data}" alt="${escapeHtml(file.name)}"></div>`;
+        } else {
+          const ext = getFileExtension(file.name);
+          filesPreview += `<div class="file-preview-icon">${ext || 'FILE'}</div>`;
+        }
+      });
+      if (ann.files.length > 3) {
+        filesPreview += `<div class="file-preview-more">+${ann.files.length - 3}</div>`;
+      }
+      filesPreview += '</div>';
+    }
+
     card.innerHTML = `
       <div class="announcement-header">
         <div class="announcement-author-info">
@@ -1722,6 +1741,7 @@ async function renderAnnouncements() {
       </div>
       <p class="announcement-text">${escapeHtml(ann.text.substring(0, 150))}${ann.text.length > 150 ? '...' : ''}</p>
       ${imageHtml}
+      ${filesPreview}
     `;
 
     // Click to view details
@@ -1786,9 +1806,7 @@ function showAnnouncementDetail(announcement, userData) {
 
   // Add files if any
   if (announcement.files && announcement.files.length > 0) {
-    contentHtml += '<div style="margin-top: 16px;">';
     contentHtml += createFilesDisplay(announcement.files, 'announcement-' + Date.now());
-    contentHtml += '</div>';
   }
 
   content.innerHTML = contentHtml;
