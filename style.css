@@ -486,7 +486,7 @@ input[type="checkbox"] {
     transition: transform 0.3s ease;
 }
 
-/* Announcement files preview */
+/* Announcement files preview - Clean minimal style */
 .announcement-files-preview {
     display: flex;
     gap: 6px;
@@ -495,17 +495,18 @@ input[type="checkbox"] {
 }
 
 .file-preview-thumb {
-    width: 50px;
-    height: 50px;
-    border-radius: 4px;
+    width: 60px;
+    height: 60px;
+    border-radius: 6px;
     overflow: hidden;
     border: 1px solid #e0e0e0;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 
 .file-preview-thumb:hover {
-    transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
 }
 
 .file-preview-thumb img {
@@ -515,32 +516,34 @@ input[type="checkbox"] {
 }
 
 .file-preview-icon {
-    width: 50px;
-    height: 50px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border: none;
-    border-radius: 4px;
+    width: 60px;
+    height: 60px;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
-    font-weight: 700;
-    color: #ffffff;
+    font-size: 10px;
+    font-weight: 600;
+    color: #666;
     text-transform: uppercase;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 
 .file-preview-icon:hover {
-    transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+    background: #ebebeb;
+    border-color: #007bff;
+    color: #007bff;
 }
 
 .file-preview-more {
-    width: 50px;
-    height: 50px;
-    background: #f0f0f0;
+    width: 60px;
+    height: 60px;
+    background: #f5f5f5;
     border: 1px solid #e0e0e0;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -548,11 +551,13 @@ input[type="checkbox"] {
     font-weight: 600;
     color: #666;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 
 .file-preview-more:hover {
-    background: #e0e0e0;
-    transform: scale(1.05);
+    background: #ebebeb;
+    border-color: #007bff;
+    color: #007bff;
 }
 
 .announcement-image-thumb:hover {
@@ -1279,7 +1284,7 @@ input[type="checkbox"] {
     transform: scale(1.1);
 }
 
-/* File attachment in message */
+/* File attachment in message - Clean minimal style */
 .message-file-attachment {
     margin-top: 8px;
     display: block;
@@ -1287,35 +1292,37 @@ input[type="checkbox"] {
 
 .message-file {
     margin-top: 8px;
-    padding: 10px 12px;
-    background: transparent;
-    border: 1px solid #e0e0e0;
-    border-radius: 6px;
+    padding: 12px;
+    background: #f5f5f5;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    max-width: 100%;
+    gap: 12px;
+    max-width: 300px;
     transition: all 0.2s ease;
+    cursor: pointer;
 }
 
 .message-file:hover {
-    background: #f8f9fa;
-    border-color: #007bff;
+    background: #ebebeb;
+    border-color: #d0d0d0;
 }
 
 .message-file-icon {
-    width: 36px;
-    height: 36px;
-    background: #007bff;
-    border-radius: 4px;
+    width: 40px;
+    height: 40px;
+    background: #ffffff;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    font-weight: 700;
-    font-size: 9px;
+    color: #666;
+    font-weight: 600;
+    font-size: 10px;
     text-transform: uppercase;
     flex-shrink: 0;
+    border: 1px solid #e0e0e0;
 }
 
 .message-file-info {
@@ -1324,9 +1331,9 @@ input[type="checkbox"] {
 }
 
 .message-file-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
-    color: #000;
+    color: #333;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1334,18 +1341,17 @@ input[type="checkbox"] {
 }
 
 .message-file-size {
-    font-size: 11px;
-    color: #666;
+    font-size: 12px;
+    color: #999;
     margin-top: 2px;
 }
 
 .message-file-download {
-    background: #007bff;
-    color: white;
+    background: transparent;
+    color: #007bff;
     border: none;
-    padding: 6px 14px;
-    border-radius: 4px;
-    font-size: 12px;
+    padding: 0;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1353,9 +1359,8 @@ input[type="checkbox"] {
 }
 
 .message-file-download:hover {
-    background: #0056b3;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+    color: #0056b3;
+    text-decoration: underline;
 }
 
 .message-image {
@@ -1537,14 +1542,7 @@ input[type="checkbox"] {
 /* Announcement modal file display */
 .modal-content .message-file {
     margin-top: 10px;
-    background: #f8f9fa;
-    border: 1px solid #e0e0e0;
-    padding: 8px 10px;
-}
-
-.modal-content .message-file:hover {
-    background: #ffffff;
-    border-color: #007bff;
+    max-width: 100%;
 }
 
 .modal-content .message-file-attachment {
@@ -1560,8 +1558,6 @@ input[type="checkbox"] {
 
 .modal-content .message-folder {
     margin-top: 10px;
-    background: #fff9e6;
-    border: 2px solid #FDB022;
 }
 
 /* Announcement item file display */
