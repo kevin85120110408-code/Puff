@@ -110,18 +110,23 @@ auth.onAuthStateChanged(async (user) => {
       }
     });
 
+    console.log('✅ User authenticated, setting up forum...');
     showPage(forumPage);
     loadMessages();
     updateOnlineStatus(true);
 
+    console.log('🎬 Initializing components...');
+
     // Initialize typing indicator
+    console.log('1️⃣ Initializing typing indicator...');
     initTypingIndicator();
 
     // Initialize mention autocomplete
+    console.log('2️⃣ Initializing mention autocomplete...');
     initMentionAutocomplete();
 
     // Initialize online users list
-    console.log('🚀 About to initialize online users list...');
+    console.log('3️⃣ About to initialize online users list...');
     console.log('🔍 Checking if initOnlineUsersList function exists:', typeof initOnlineUsersList);
     setTimeout(() => {
       console.log('⏰ Timeout fired, calling initOnlineUsersList...');
@@ -131,6 +136,8 @@ auth.onAuthStateChanged(async (user) => {
         console.error('❌ initOnlineUsersList is not a function!');
       }
     }, 1000); // Delay 1 second to ensure DOM is ready
+
+    console.log('🏁 All initialization calls completed');
   } else {
     currentUser = null;
     isAdmin = false;
