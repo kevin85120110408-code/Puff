@@ -3154,10 +3154,18 @@ function startVersionCheck() {
   versionListener = versionRef.on('value', (snapshot) => {
     if (snapshot.exists()) {
       const serverVersion = snapshot.val().current;
-      const currentVersion = localStorage.getItem('app_version');
+      let currentVersion = localStorage.getItem('app_version');
 
       console.log('📦 Server version:', serverVersion);
       console.log('💾 Local version:', currentVersion);
+
+      // If no local version, sync from server
+      if (!currentVersion) {
+        console.log('🔄 No local version found, syncing from server:', serverVersion);
+        localStorage.setItem('app_version', serverVersion);
+        currentVersion = serverVersion;
+        return;
+      }
 
       // Don't show notification if we're in the middle of updating
       if (isUpdating) {
@@ -3171,6 +3179,7 @@ function startVersionCheck() {
         showUpdateNotification(serverVersion);
       } else if (serverVersion === currentVersion) {
         // Versions match, hide notification if showing
+        console.log('✅ Versions match, no update needed');
         hideUpdateNotification();
       }
     }
@@ -3271,8 +3280,29 @@ if (updateLaterBtn) {
 }
 
 // Start version check when user is logged in
-auth.onAuthStateChanged((user) => {
+auth.onAuthStateChanged(async (user) => {
   if (user && !versionListener) {
+    // Sync version from Firebase on login
+    try {
+      const versionRef = database.ref('appVersion');
+      const snapshot = await versionRef.once('value');
+      if (snapshot.exists()) {
+        const serverVersion = snapshot.val().current;
+        const localVersion = localStorage.getItem('app_version');
+
+        console.log('🔄 Syncing versions on login...');
+        console.log('📦 Server version:', serverVersion);
+        console.log('💾 Local version:', localVersion);
+
+        // If versions match, ensure localStorage is set correctly
+        if (localVersion === serverVersion) {
+          console.log('✅ Versions already in sync');
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to sync version on login:', error);
+    }
+
     // Start checking for updates with real-time listener
     startVersionCheck();
 
