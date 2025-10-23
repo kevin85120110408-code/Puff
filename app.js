@@ -1707,10 +1707,10 @@ async function renderAnnouncements() {
     const isAdmin = userData?.role === 'admin';
     const authorClass = isAdmin ? 'announcement-author-name admin' : 'announcement-author-name';
 
-    // File preview (show first 2 files as cards)
+    // File preview (show first 3 files as compact cards)
     let filesPreview = '';
     if (ann.files && ann.files.length > 0) {
-      const previewFiles = ann.files.slice(0, 2);
+      const previewFiles = ann.files.slice(0, 3);
       filesPreview = '<div class="announcement-files-preview">';
       previewFiles.forEach(file => {
         const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
@@ -1724,15 +1724,15 @@ async function renderAnnouncements() {
             <div class="announcement-file-card">
               <div class="announcement-file-icon" style="background: ${iconColor};">${ext || 'FILE'}</div>
               <div class="announcement-file-info">
-                <div class="announcement-file-name">${escapeHtml(displayName.length > 20 ? displayName.substring(0, 20) + '...' : displayName)}</div>
+                <div class="announcement-file-name">${escapeHtml(displayName.length > 15 ? displayName.substring(0, 15) + '...' : displayName)}</div>
                 <div class="announcement-file-size">${formatFileSize(file.size)}</div>
               </div>
             </div>
           `;
         }
       });
-      if (ann.files.length > 2) {
-        filesPreview += `<div class="announcement-file-more">+${ann.files.length - 2} more</div>`;
+      if (ann.files.length > 3) {
+        filesPreview += `<div class="announcement-file-more">+${ann.files.length - 3}</div>`;
       }
       filesPreview += '</div>';
     }

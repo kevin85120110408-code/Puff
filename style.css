@@ -486,39 +486,39 @@ input[type="checkbox"] {
     transition: transform 0.3s ease;
 }
 
-/* Announcement files preview - Telegram style */
+/* Announcement files preview - Compact style */
 .announcement-files-preview {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 10px;
+    display: inline-flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
 }
 
 .announcement-file-card {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 6px 10px;
     background: #f5f5f5;
-    border-radius: 8px;
+    border-radius: 6px;
     transition: all 0.2s ease;
     cursor: pointer;
-    max-width: 100%;
+    max-width: 200px;
 }
 
 .announcement-file-card:hover {
-    background: #ebebeb;
+    background: #e8e8e8;
 }
 
 .announcement-file-icon {
-    width: 48px;
-    height: 48px;
+    width: 32px;
+    height: 32px;
     background: #5b9bd5;
-    border-radius: 8px;
+    border-radius: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
     color: #ffffff;
     text-transform: uppercase;
@@ -531,34 +531,38 @@ input[type="checkbox"] {
 }
 
 .announcement-file-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     color: #333;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.3;
 }
 
 .announcement-file-size {
-    font-size: 12px;
+    font-size: 11px;
     color: #999;
-    margin-top: 2px;
+    margin-top: 1px;
+    line-height: 1.2;
 }
 
 .announcement-file-more {
-    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
     background: #f5f5f5;
-    border-radius: 8px;
-    text-align: center;
-    font-size: 13px;
+    border-radius: 6px;
+    font-size: 12px;
     font-weight: 500;
     color: #666;
     cursor: pointer;
     transition: all 0.2s ease;
+    height: 44px;
 }
 
 .announcement-file-more:hover {
-    background: #ebebeb;
+    background: #e8e8e8;
 }
 
 .file-preview-thumb {
@@ -1305,7 +1309,7 @@ input[type="checkbox"] {
     transform: scale(1.1);
 }
 
-/* File attachment in message - Clean minimal style */
+/* File attachment in message - Compact style */
 .message-file-attachment {
     margin-top: 8px;
     display: block;
@@ -1313,34 +1317,32 @@ input[type="checkbox"] {
 
 .message-file {
     margin-top: 8px;
-    padding: 12px;
+    padding: 8px 10px;
     background: #f5f5f5;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
+    border-radius: 6px;
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    max-width: 300px;
+    gap: 10px;
+    max-width: 280px;
     transition: all 0.2s ease;
     cursor: pointer;
 }
 
 .message-file:hover {
-    background: #ebebeb;
-    border-color: #d0d0d0;
+    background: #e8e8e8;
 }
 
 .message-file-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     background: #5b9bd5;
-    border-radius: 8px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #ffffff;
     font-weight: 600;
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
     flex-shrink: 0;
 }
@@ -1351,19 +1353,21 @@ input[type="checkbox"] {
 }
 
 .message-file-name {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     color: #333;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     display: block;
+    line-height: 1.3;
 }
 
 .message-file-size {
-    font-size: 12px;
+    font-size: 11px;
     color: #999;
-    margin-top: 2px;
+    margin-top: 1px;
+    line-height: 1.2;
 }
 
 .message-file-download {
@@ -1371,7 +1375,7 @@ input[type="checkbox"] {
     color: #007bff;
     border: none;
     padding: 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
