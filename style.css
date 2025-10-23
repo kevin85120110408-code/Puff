@@ -1106,55 +1106,7 @@ input[type="checkbox"] {
     position: relative;
 }
 
-.btn-emoji {
-    padding: 10px 14px;
-    border: 1px solid #e0e0e0;
-    background: #ffffff;
-    border-radius: 50%;
-    font-size: 20px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.btn-emoji:hover {
-    background: #f5f5f5;
-    transform: scale(1.1);
-}
-
-.emoji-picker {
-    position: absolute;
-    bottom: 60px;
-    left: 0;
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
-    max-width: 320px;
-}
-
-.emoji-grid {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 8px;
-    max-height: 200px;
-    overflow-y: auto;
-}
-
-.emoji-item {
-    font-size: 24px;
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 8px;
-    text-align: center;
-    transition: all 0.2s ease;
-}
-
-.emoji-item:hover {
-    background: #f5f5f5;
-    transform: scale(1.2);
-}
+/* Emoji button and picker removed */
 
 .message-input {
     flex: 1;
@@ -1415,6 +1367,7 @@ input[type="checkbox"] {
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     transition: transform 0.3s ease, box-shadow 0.3s ease;
+    text-align: center;
 }
 
 .stat-card:hover {
@@ -1422,21 +1375,19 @@ input[type="checkbox"] {
     box-shadow: 0 8px 20px rgba(0,0,0,0.12);
 }
 
-.stat-icon {
-    font-size: 32px;
+.stat-label {
+    font-size: 13px;
+    color: #718096;
     margin-bottom: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .stat-value {
-    font-size: 32px;
+    font-size: 36px;
     font-weight: 700;
-    color: #2d3748;
-    margin-bottom: 5px;
-}
-
-.stat-label {
-    font-size: 14px;
-    color: #718096;
+    color: #000000;
     margin-bottom: 8px;
 }
 
@@ -4317,37 +4268,7 @@ body::before {
     gap: 20px;
 }
 
-.stat-card {
-    background: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    transition: all 0.3s ease;
-}
-
-.stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.stat-icon {
-    font-size: 36px;
-    margin-bottom: 12px;
-}
-
-.stat-value {
-    font-size: 32px;
-    font-weight: 700;
-    color: #000000;
-    margin-bottom: 8px;
-}
-
-.stat-label {
-    font-size: 13px;
-    color: #666666;
-    font-weight: 500;
-}
+/* stat-card styles moved to main section above */
 
 @media (max-width: 768px) {
     .stats-grid {
@@ -4359,12 +4280,12 @@ body::before {
         padding: 16px;
     }
 
-    .stat-icon {
+    .stat-value {
         font-size: 28px;
     }
 
-    .stat-value {
-        font-size: 24px;
+    .stat-label {
+        font-size: 12px;
     }
 }
 
@@ -4650,21 +4571,7 @@ button,
     }
 }
 
-/* Better emoji picker on mobile */
-@media (max-width: 768px) {
-    .emoji-picker {
-        max-height: 250px;
-        width: 100%;
-        max-width: 320px;
-    }
-
-    .emoji-item {
-        font-size: 24px;
-        padding: 10px;
-        min-width: 44px;
-        min-height: 44px;
-    }
-}
+/* Emoji picker removed */
 
 /* Optimize modals for mobile */
 @media (max-width: 768px) {

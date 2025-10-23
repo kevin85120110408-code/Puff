@@ -200,7 +200,7 @@ function hideCustomModal() {
 // Replace alert, confirm, prompt with custom modals
 function showError(message) {
   showCustomModal({
-    icon: '❌',
+    icon: '✕',
     title: 'Error',
     message: message,
     type: 'alert',
@@ -210,7 +210,7 @@ function showError(message) {
 
 function showSuccess(message) {
   showCustomModal({
-    icon: '✅',
+    icon: '✓',
     title: 'Success',
     message: message,
     type: 'alert',
@@ -220,7 +220,7 @@ function showSuccess(message) {
 
 function showConfirm(message, onConfirm, onCancel = () => {}) {
   showCustomModal({
-    icon: '❓',
+    icon: '?',
     title: 'Confirm',
     message: message,
     type: 'confirm',
@@ -233,7 +233,7 @@ function showConfirm(message, onConfirm, onCancel = () => {}) {
 
 function showPrompt(message, placeholder = '', onConfirm, onCancel = () => {}) {
   showCustomModal({
-    icon: '✏️',
+    icon: 'i',
     title: 'Input Required',
     message: message,
     type: 'prompt',
@@ -523,6 +523,8 @@ const loadedMessages = new Set();
 let oldestMessageKey = null;
 let isLoadingMore = false;
 let hasMoreMessages = true;
+let lastReadTimestamp = 0; // Track last read message timestamp
+let unreadCount = 0; // Track unread messages count
 
 async function getUserData(userId) {
   if (userCache.has(userId)) {
@@ -1248,7 +1250,7 @@ window.exportLogs = async function() {
 // Reset database
 window.resetDatabase = async function() {
   showCustomModal({
-    icon: '⚠️',
+    icon: '!',
     title: 'DANGER!',
     message: '这将删除所有数据，包括用户、消息和公告。你确定吗？',
     type: 'confirm',
@@ -1257,7 +1259,7 @@ window.resetDatabase = async function() {
     dangerButton: true,
     onConfirm: () => {
       showCustomModal({
-        icon: '⚠️',
+        icon: '!',
         title: 'Last Warning',
         message: '这是最后的机会。输入"是"以确认重置数据库。',
         type: 'prompt',
@@ -1811,60 +1813,7 @@ if (searchInput) {
   });
 }
 
-// Emoji Picker
-const emojiBtn = document.getElementById('emojiBtn');
-const emojiPicker = document.getElementById('emojiPicker');
-const emojiGrid = document.getElementById('emojiGrid');
-
-const emojis = [
-  '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
-  '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩',
-  '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪',
-  '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨',
-  '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥',
-  '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
-  '🤢', '🤮', '🤧', '🥵', '🥶', '😶‍🌫️', '😵', '🤯',
-  '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁',
-  '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧',
-  '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣',
-  '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠',
-  '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹',
-  '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹',
-  '😻', '😼', '😽', '🙀', '😿', '😾', '❤️', '🧡',
-  '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
-  '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝',
-  '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙',
-  '👈', '👉', '👆', '👇', '☝️', '✋', '🤚', '🖐',
-  '🖖', '👋', '🤙', '💪', '🙏', '✍️', '💅', '🤳',
-  '🎉', '🎊', '🎈', '🎁', '🏆', '🥇', '🥈', '🥉',
-  '⭐', '🌟', '✨', '💫', '🔥', '💯', '✅', '❌'
-];
-
-emojis.forEach(emoji => {
-  const emojiItem = document.createElement('div');
-  emojiItem.className = 'emoji-item';
-  emojiItem.textContent = emoji;
-  emojiItem.onclick = () => {
-    messageInput.value += emoji;
-    messageInput.focus();
-    emojiPicker.style.display = 'none';
-  };
-  emojiGrid.appendChild(emojiItem);
-});
-
-if (emojiBtn) {
-  emojiBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'block' : 'none';
-  });
-}
-
-// Close emoji picker when clicking outside
-document.addEventListener('click', (e) => {
-  if (emojiPicker && !emojiPicker.contains(e.target) && e.target !== emojiBtn) {
-    emojiPicker.style.display = 'none';
-  }
-});
+// Emoji picker removed - no longer using emojis
 
 // Dark mode removed - using light theme only for better mobile experience
 
@@ -2162,7 +2111,7 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
         <div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>
         <div class="message-actions">
           <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
-            ❤️ <span class="like-count">${likeCount > 0 ? likeCount : ''}</span>
+            <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
           </button>
           <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
             💬 Reply
@@ -3447,7 +3396,7 @@ if (updateNowBtn) {
 
     // Show loading message
     updateNotification.innerHTML = `
-      <div class="update-icon">⏳</div>
+      <div class="update-icon">↻</div>
       <div class="update-content">
         <div class="update-title">Updating to v${newVersionAvailable}...</div>
         <div class="update-message">Please wait while we update the app</div>
