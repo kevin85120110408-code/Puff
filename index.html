@@ -121,7 +121,7 @@
 <div class="nav-container">
 <h2 class="nav-brand">Forum <span style="font-size: 10px; opacity: 0.5; margin-left: 8px;" id="versionDisplay">v5.1</span></h2>
 <div class="nav-actions">
-<button class="nav-btn" id="avatarBtn" title="Change avatar">👤</button>
+<button class="nav-btn" id="avatarBtn" title="Change avatar">Profile</button>
 <button class="nav-btn" id="adminPanelBtn" style="display: none;">Admin Panel</button>
 <button class="nav-btn" id="logoutBtn">Logout</button>
 </div>
@@ -174,8 +174,30 @@
 <div class="mention-autocomplete" id="mentionAutocomplete" style="display: none;">
 <div class="mention-autocomplete-list" id="mentionAutocompleteList"></div>
 </div>
+<!-- File Preview -->
+<div class="file-preview-container" id="filePreviewContainer" style="display: none;">
+<div class="file-preview-item" id="filePreviewItem">
+<span class="file-preview-name" id="filePreviewName"></span>
+<span class="file-preview-size" id="filePreviewSize"></span>
+<button class="file-preview-remove" id="removeFileBtn">×</button>
+</div>
+</div>
+<div class="message-input-wrapper">
+<input type="file" id="fileInput" style="display: none;" multiple>
+<input type="file" id="folderInput" style="display: none;" webkitdirectory directory multiple>
+<button class="btn-attach" id="attachFileBtn" title="Attach files">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+</svg>
+</button>
+<button class="btn-attach" id="attachFolderBtn" title="Attach folder">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+</svg>
+</button>
 <input type="text" id="messageInput" class="message-input" placeholder="Type your message..." maxlength="500">
 <button class="btn btn-send" id="sendMessageBtn">Send</button>
+</div>
 </div>
 </div>
 </section>
@@ -362,10 +384,14 @@
 <textarea id="announcementText" class="form-textarea" placeholder="编写公告内容..." maxlength="1000" rows="5"></textarea>
 </div>
 <div class="form-group">
-<label class="form-label">图片（可选）</label>
-<input type="file" id="announcementImage" accept="image/*" style="display: none;">
-<button class="btn btn-secondary" id="uploadAnnouncementImageBtn">📷 上传图片</button>
-<div id="announcementImagePreview" class="image-preview"></div>
+<label class="form-label">附件（可选）</label>
+<input type="file" id="announcementFiles" multiple style="display: none;">
+<input type="file" id="announcementFolder" webkitdirectory directory multiple style="display: none;">
+<div style="display: flex; gap: 8px;">
+<button class="btn btn-secondary" id="uploadAnnouncementFilesBtn">📎 上传文件</button>
+<button class="btn btn-secondary" id="uploadAnnouncementFolderBtn">📁 上传文件夹</button>
+</div>
+<div id="announcementFilesPreview" class="file-preview-list"></div>
 </div>
 <div class="form-group">
 <label class="form-label">徽章类型</label>

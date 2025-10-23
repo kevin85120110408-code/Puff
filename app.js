@@ -85,7 +85,7 @@ function showCustomModal(options) {
   }
 
   const {
-    icon = '💬',
+    icon = 'i',
     title = '',
     message = '',
     type = 'alert', // 'alert', 'confirm', 'prompt'
@@ -303,6 +303,10 @@ auth.onAuthStateChanged(async (user) => {
 
     console.log('✅ User authenticated, setting up forum...');
     showPage(forumPage);
+
+    // Load last read timestamp before loading messages
+    await loadLastReadTimestamp();
+
     loadMessages();
     updateOnlineStatus(true);
 
@@ -315,6 +319,14 @@ auth.onAuthStateChanged(async (user) => {
     // Initialize mention autocomplete
     console.log('2️⃣ Initializing mention autocomplete...');
     initMentionAutocomplete();
+
+    // Mark messages as read when user scrolls to bottom
+    messagesContainer.addEventListener('scroll', () => {
+      const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 50;
+      if (isAtBottom) {
+        updateLastReadTimestamp();
+      }
+    });
 
     // Initialize online users list
     console.log('3️⃣ About to initialize online users list...');
@@ -537,6 +549,57 @@ async function getUserData(userId) {
   return userData;
 }
 
+// Load last read timestamp for current user
+async function loadLastReadTimestamp() {
+  if (!currentUser) return;
+
+  try {
+    const snapshot = await database.ref(`users/${currentUser.uid}/lastReadTimestamp`).once('value');
+    lastReadTimestamp = snapshot.val() || 0;
+    console.log('Last read timestamp loaded:', lastReadTimestamp);
+  } catch (error) {
+    console.error('Failed to load last read timestamp:', error);
+  }
+}
+
+// Update last read timestamp
+async function updateLastReadTimestamp() {
+  if (!currentUser) return;
+
+  const now = Date.now();
+  lastReadTimestamp = now;
+
+  try {
+    await database.ref(`users/${currentUser.uid}/lastReadTimestamp`).set(now);
+    console.log('Last read timestamp updated:', now);
+    updateUnreadCount();
+  } catch (error) {
+    console.error('Failed to update last read timestamp:', error);
+  }
+}
+
+// Count unread messages
+function updateUnreadCount() {
+  unreadCount = 0;
+  const messages = messagesContainer.querySelectorAll('.message');
+  messages.forEach(msg => {
+    const timestamp = parseInt(msg.dataset.timestamp);
+    if (timestamp > lastReadTimestamp) {
+      unreadCount++;
+      msg.classList.add('unread-message');
+    } else {
+      msg.classList.remove('unread-message');
+    }
+  });
+
+  // Update unread indicator in title
+  if (unreadCount > 0) {
+    document.title = `(${unreadCount}) Forum`;
+  } else {
+    document.title = 'Forum';
+  }
+}
+
 function loadMessages() {
   const messagesRef = database.ref('messages').limitToLast(50);
 
@@ -582,6 +645,13 @@ function loadMessages() {
     const messageEl = document.createElement('div');
     messageEl.className = 'message';
     messageEl.dataset.messageId = messageId;
+    messageEl.dataset.timestamp = msg.timestamp; // Store timestamp for unread tracking
+
+    // Mark as unread if timestamp is after last read
+    if (msg.timestamp > lastReadTimestamp && msg.userId !== currentUser.uid) {
+      messageEl.classList.add('unread-message');
+      unreadCount++;
+    }
 
     // Only add animation class if it's truly a new message
     if (isNewMessage) {
@@ -629,25 +699,26 @@ function loadMessages() {
             <span class="message-time">${formatTime(msg.timestamp)} ${isEdited}</span>
           </div>
           ${replySection}
-          <div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>
+          ${msg.text ? `<div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>` : ''}
+          ${msg.files ? createFilesDisplay(msg.files, messageId) : ''}
           <div class="message-actions">
             <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
-              ❤️ <span class="like-count">${likeCount > 0 ? likeCount : ''}</span>
+              <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
             </button>
             <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
-              💬 Reply
+              Reply
             </button>
             ${isOwnMessage ? `
               <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
-                ✏️ Edit
+                Edit
               </button>
               <button class="btn-action btn-delete" onclick="deleteMessage('${messageId}')">
-                🗑️ Delete
+                Delete
               </button>
             ` : ''}
             ${isAdmin ? `
               <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
-                🗑️ Delete
+                Delete
               </button>
             ` : ''}
           </div>
@@ -756,22 +827,22 @@ function loadMessages() {
             <div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>
             <div class="message-actions">
               <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
-                ❤️ <span class="like-count">${likeCount > 0 ? likeCount : ''}</span>
+                <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
               </button>
               <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
-                💬 Reply
+                Reply
               </button>
               ${isOwnMessage ? `
                 <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
-                  ✏️ Edit
+                  Edit
                 </button>
                 <button class="btn-action btn-delete" onclick="deleteMessage('${messageId}')">
-                  🗑️ Delete
+                  Delete
                 </button>
               ` : ''}
               ${isAdmin ? `
                 <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
-                  🗑️ Delete
+                  Delete
                 </button>
               ` : ''}
             </div>
@@ -780,6 +851,119 @@ function loadMessages() {
       `;
     }
   });
+}
+
+// ============================================
+// FILE UPLOAD
+// ============================================
+
+let selectedFiles = [];
+const fileInput = document.getElementById('fileInput');
+const folderInput = document.getElementById('folderInput');
+const attachFileBtn = document.getElementById('attachFileBtn');
+const attachFolderBtn = document.getElementById('attachFolderBtn');
+const filePreviewContainer = document.getElementById('filePreviewContainer');
+const filePreviewName = document.getElementById('filePreviewName');
+const filePreviewSize = document.getElementById('filePreviewSize');
+const removeFileBtn = document.getElementById('removeFileBtn');
+
+// Open file picker
+attachFileBtn.addEventListener('click', () => {
+  fileInput.click();
+});
+
+// Open folder picker
+attachFolderBtn.addEventListener('click', () => {
+  folderInput.click();
+});
+
+// Handle file selection
+fileInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  // Check total size (max 25MB total)
+  const maxTotalSize = 25 * 1024 * 1024; // 25MB
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+
+  if (totalSize > maxTotalSize) {
+    showError('Total file size must be less than 25MB');
+    fileInput.value = '';
+    return;
+  }
+
+  // Check individual file size (max 10MB per file)
+  const maxFileSize = 10 * 1024 * 1024; // 10MB
+  const oversizedFile = files.find(file => file.size > maxFileSize);
+  if (oversizedFile) {
+    showError(`File "${oversizedFile.name}" is too large. Max 10MB per file.`);
+    fileInput.value = '';
+    return;
+  }
+
+  selectedFiles = files;
+
+  // Show preview
+  if (files.length === 1) {
+    filePreviewName.textContent = files[0].name;
+    filePreviewSize.textContent = formatFileSize(files[0].size);
+  } else {
+    filePreviewName.textContent = `${files.length} files selected`;
+    filePreviewSize.textContent = formatFileSize(totalSize);
+  }
+  filePreviewContainer.style.display = 'block';
+});
+
+// Handle folder selection
+folderInput.addEventListener('change', (e) => {
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
+
+  // Check total size (max 25MB total)
+  const maxTotalSize = 25 * 1024 * 1024; // 25MB
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+
+  if (totalSize > maxTotalSize) {
+    showError('Total folder size must be less than 25MB');
+    folderInput.value = '';
+    return;
+  }
+
+  selectedFiles = files;
+
+  // Show preview
+  const folderName = files[0].webkitRelativePath.split('/')[0];
+  filePreviewName.textContent = `Folder: ${folderName} (${files.length} files)`;
+  filePreviewSize.textContent = formatFileSize(totalSize);
+  filePreviewContainer.style.display = 'block';
+});
+
+// Remove files
+removeFileBtn.addEventListener('click', () => {
+  selectedFiles = [];
+  fileInput.value = '';
+  folderInput.value = '';
+  filePreviewContainer.style.display = 'none';
+});
+
+// Format file size
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Get file extension
+function getFileExtension(filename) {
+  return filename.slice((filename.lastIndexOf(".") - 1 >>> 0) + 2).toUpperCase();
+}
+
+// Check if file is image
+function isImageFile(filename) {
+  const imageExtensions = ['JPG', 'JPEG', 'PNG', 'GIF', 'WEBP', 'BMP', 'SVG'];
+  return imageExtensions.includes(getFileExtension(filename));
 }
 
 sendMessageBtn.addEventListener('click', sendMessage);
@@ -1093,15 +1277,15 @@ async function loadRecentActivity() {
 
 function getActionIcon(action) {
   const icons = {
-    'BAN': '🚫',
-    'UNBAN': '✅',
-    'MUTE': '🔇',
-    'UNMUTE': '🔊',
-    'DELETE': '🗑️',
-    'PIN': '📌',
-    'UNPIN': '📍'
+    'BAN': 'X',
+    'UNBAN': '✓',
+    'MUTE': '-',
+    'UNMUTE': '+',
+    'DELETE': 'X',
+    'PIN': '^',
+    'UNPIN': 'v'
   };
-  return icons[action] || '📝';
+  return icons[action] || '•';
 }
 
 // Load Messages Admin
@@ -1580,7 +1764,16 @@ function showAnnouncementDetail(announcement, userData) {
     image.innerHTML = '';
   }
 
-  content.textContent = announcement.text;
+  let contentHtml = `<p>${escapeHtml(announcement.text)}</p>`;
+
+  // Add files if any
+  if (announcement.files && announcement.files.length > 0) {
+    contentHtml += '<div style="margin-top: 16px;">';
+    contentHtml += createFilesDisplay(announcement.files, 'announcement-' + Date.now());
+    contentHtml += '</div>';
+  }
+
+  content.innerHTML = contentHtml;
 
   modal.classList.add('active');
 }
@@ -1728,12 +1921,17 @@ window.cancelReply = function() {
   }
 };
 
-// Update sendMessage to include reply, rate limiting, and profanity filter
+// Update sendMessage to include reply, rate limiting, profanity filter, and file upload
 const originalSendMessage = sendMessage;
 async function sendMessage() {
   const text = messageInput.value.trim();
 
-  if (!text) return;
+  // Allow sending if there's text or files
+  if (!text && selectedFiles.length === 0) return;
+
+  // Disable send button
+  sendMessageBtn.disabled = true;
+  sendMessageBtn.textContent = 'Sending...';
 
   // Clear typing indicator
   if (currentUser) {
@@ -1743,12 +1941,16 @@ async function sendMessage() {
   // Check rate limit
   if (!checkRateLimit()) {
     showError('You are sending messages too quickly. Please slow down.');
+    sendMessageBtn.disabled = false;
+    sendMessageBtn.textContent = 'Send';
     return;
   }
 
   // Check profanity
-  if (containsProfanity(text)) {
+  if (text && containsProfanity(text)) {
     showError('Your message contains inappropriate content');
+    sendMessageBtn.disabled = false;
+    sendMessageBtn.textContent = 'Send';
     return;
   }
 
@@ -1758,12 +1960,14 @@ async function sendMessage() {
 
   if (userData.muted) {
     showError('You are muted and cannot send messages');
+    sendMessageBtn.disabled = false;
+    sendMessageBtn.textContent = 'Send';
     return;
   }
 
   try {
     // Filter profanity (just in case)
-    const filteredText = filterProfanity(text);
+    const filteredText = text ? filterProfanity(text) : '';
 
     const messageData = {
       text: filteredText,
@@ -1779,8 +1983,43 @@ async function sendMessage() {
       };
     }
 
+    // Upload files if selected
+    if (selectedFiles.length > 0) {
+      sendMessageBtn.textContent = 'Uploading...';
+
+      const filesData = [];
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const fileData = await uploadFileToBase64(file);
+
+        // Preserve folder path if it exists
+        const fileName = file.webkitRelativePath || file.name;
+
+        filesData.push({
+          name: fileName,
+          size: file.size,
+          type: file.type,
+          data: fileData
+        });
+
+        // Update progress
+        if (selectedFiles.length > 1) {
+          sendMessageBtn.textContent = `Uploading ${i + 1}/${selectedFiles.length}...`;
+        }
+      }
+
+      messageData.files = filesData;
+    }
+
     await database.ref('messages').push(messageData);
     messageInput.value = '';
+
+    // Clear file selection
+    if (selectedFiles.length > 0) {
+      selectedFiles = [];
+      fileInput.value = '';
+      filePreviewContainer.style.display = 'none';
+    }
 
     // Update message count
     await updateMessageCount(currentUser.uid);
@@ -1788,11 +2027,241 @@ async function sendMessage() {
     if (replyingTo) {
       cancelReply();
     }
+
+    // Success
+    sendMessageBtn.textContent = 'Sent!';
+    setTimeout(() => {
+      sendMessageBtn.textContent = 'Send';
+      sendMessageBtn.disabled = false;
+    }, 500);
   } catch (error) {
     console.error('Send error:', error);
     showError('Failed to send message');
+    sendMessageBtn.disabled = false;
+    sendMessageBtn.textContent = 'Send';
   }
 }
+
+// Upload file to base64 with image compression
+async function uploadFileToBase64(file) {
+  // Check if it's an image
+  if (file.type.startsWith('image/')) {
+    return await compressImage(file);
+  }
+
+  // For non-image files, just convert to base64
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Compress image before upload
+async function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Calculate new dimensions (max 1200px width/height)
+        let width = img.width;
+        let height = img.height;
+        const maxSize = 1200;
+
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height / width) * maxSize;
+            width = maxSize;
+          } else {
+            width = (width / height) * maxSize;
+            height = maxSize;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        // Draw image on canvas
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Convert to base64 with compression (0.8 quality)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        resolve(compressedDataUrl);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Create files display (folder or individual files)
+function createFilesDisplay(files, messageId) {
+  if (!files || files.length === 0) return '';
+
+  // Check if files are from a folder (have webkitRelativePath or similar structure)
+  const isFolder = files.length > 1 && files[0].name && files[0].name.includes('/');
+
+  if (isFolder) {
+    // Display as folder
+    const folderName = files[0].name.split('/')[0] || 'Folder';
+    const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
+
+    return `
+      <div class="message-folder" onclick="toggleFolder('${messageId}', event)">
+        <div class="message-folder-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="#FDB022" stroke="#000" stroke-width="1">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="message-folder-info">
+          <div class="message-folder-name">${escapeHtml(folderName)}</div>
+          <div class="message-folder-meta">${files.length} files • ${formatFileSize(totalSize)}</div>
+        </div>
+        <div class="message-folder-toggle">▼</div>
+      </div>
+      <div class="message-folder-contents" id="folder-${messageId}" style="display: none;">
+        ${files.map(file => createFileAttachment(file)).join('')}
+      </div>
+    `;
+  } else {
+    // Display individual files
+    return files.map(file => createFileAttachment(file)).join('');
+  }
+}
+
+// Create file attachment HTML
+function createFileAttachment(file) {
+  const isImage = isImageFile(file.name);
+  const ext = getFileExtension(file.name);
+  const iconColor = getFileIconColor(ext);
+
+  // Get display name (remove folder path if exists)
+  const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
+
+  if (isImage) {
+    // Display image
+    return `
+      <div class="message-file-attachment">
+        <img src="${file.data}" alt="${escapeHtml(displayName)}" class="message-image" onclick="openImageModal('${file.data}', '${escapeHtml(displayName)}')">
+      </div>
+    `;
+  } else {
+    // Display file download button
+    return `
+      <div class="message-file">
+        <div class="message-file-icon" style="background: ${iconColor};">${ext || 'FILE'}</div>
+        <div class="message-file-info">
+          <div class="message-file-name">${escapeHtml(displayName)}</div>
+          <div class="message-file-size">${formatFileSize(file.size)}</div>
+        </div>
+        <button class="message-file-download" onclick="downloadFile('${escapeDataUrl(file.data)}', '${escapeHtml(displayName)}')">Download</button>
+      </div>
+    `;
+  }
+}
+
+// Toggle folder contents
+window.toggleFolder = function(messageId, event) {
+  const folderContents = document.getElementById(`folder-${messageId}`);
+  const folderElement = event ? event.currentTarget : document.querySelector(`[onclick*="toggleFolder('${messageId}')"]`);
+  const folderToggle = folderElement ? folderElement.querySelector('.message-folder-toggle') : null;
+
+  if (folderContents) {
+    if (folderContents.style.display === 'none') {
+      folderContents.style.display = 'block';
+      if (folderToggle) folderToggle.textContent = '▲';
+    } else {
+      folderContents.style.display = 'none';
+      if (folderToggle) folderToggle.textContent = '▼';
+    }
+  }
+};
+
+// Get file icon color based on extension
+function getFileIconColor(ext) {
+  const colors = {
+    // Documents
+    'PDF': '#e74c3c',
+    'DOC': '#3498db',
+    'DOCX': '#3498db',
+    'TXT': '#95a5a6',
+    'RTF': '#95a5a6',
+    // Spreadsheets
+    'XLS': '#27ae60',
+    'XLSX': '#27ae60',
+    'CSV': '#27ae60',
+    // Presentations
+    'PPT': '#e67e22',
+    'PPTX': '#e67e22',
+    // Archives
+    'ZIP': '#9b59b6',
+    'RAR': '#9b59b6',
+    '7Z': '#9b59b6',
+    'TAR': '#9b59b6',
+    'GZ': '#9b59b6',
+    // Code
+    'JS': '#f1c40f',
+    'HTML': '#e74c3c',
+    'CSS': '#3498db',
+    'JSON': '#f39c12',
+    'XML': '#e67e22',
+    'PY': '#3498db',
+    'JAVA': '#e74c3c',
+    'CPP': '#9b59b6',
+    'C': '#95a5a6',
+    'PHP': '#8e44ad',
+    // Executables
+    'EXE': '#34495e',
+    'MSI': '#34495e',
+    'APP': '#34495e',
+    'DMG': '#34495e',
+    'APK': '#27ae60',
+    // Media
+    'MP3': '#1abc9c',
+    'MP4': '#e74c3c',
+    'AVI': '#e74c3c',
+    'MOV': '#e74c3c',
+    'WAV': '#1abc9c',
+    // Default
+    'DEFAULT': '#7f8c8d'
+  };
+
+  return colors[ext] || colors['DEFAULT'];
+}
+
+// Escape data URL for HTML attribute
+function escapeDataUrl(dataUrl) {
+  return dataUrl.replace(/'/g, '&#39;');
+}
+
+// Download file
+window.downloadFile = function(dataUrl, filename) {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// Open image modal
+window.openImageModal = function(imageUrl, filename) {
+  showCustomModal({
+    icon: '',
+    title: filename,
+    message: `<img src="${imageUrl}" style="max-width: 100%; border-radius: 8px; margin-top: 12px;">`,
+    type: 'alert',
+    confirmText: 'Close'
+  });
+};
 
 // Search Messages
 if (searchInput) {
@@ -2095,7 +2564,7 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
 
   const avatar = getAvatar(userData?.username || 'Unknown', userData, msg.userId);
   const userLevel = getUserLevel(userData?.messageCount || 0);
-  const isPinned = msg.pinned ? '<span class="pinned-badge">📌 Pinned</span>' : '';
+  const isPinned = msg.pinned ? '<span class="pinned-badge">Pinned</span>' : '';
 
   messageEl.innerHTML = `
     <div class="message-container-flex">
@@ -2108,28 +2577,29 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
           <span class="message-time">${formatTime(msg.timestamp)} ${isEdited}</span>
         </div>
         ${replySection}
-        <div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>
+        ${msg.text ? `<div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>` : ''}
+        ${msg.files ? createFilesDisplay(msg.files, messageId) : ''}
         <div class="message-actions">
           <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
             <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
           </button>
           <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
-            💬 Reply
+            Reply
           </button>
           ${isOwnMessage ? `
             <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
-              ✏️ Edit
+              Edit
             </button>
             <button class="btn-action btn-delete" onclick="deleteMessage('${messageId}')">
-              🗑️ Delete
+              Delete
             </button>
           ` : ''}
           ${isAdmin ? `
             <button class="btn-action btn-pin" onclick="togglePin('${messageId}', ${!msg.pinned})">
-              ${msg.pinned ? '📌 Unpin' : '📌 Pin'}
+              ${msg.pinned ? 'Unpin' : 'Pin'}
             </button>
             <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
-              🗑️ Delete
+              Delete
             </button>
           ` : ''}
         </div>
@@ -2272,6 +2742,90 @@ window.removeAnnouncementImage = function() {
   announcementImage.value = '';
 };
 
+// Announcement files upload
+const announcementFilesInput = document.getElementById('announcementFiles');
+const announcementFolderInput = document.getElementById('announcementFolder');
+const uploadAnnouncementFilesBtn = document.getElementById('uploadAnnouncementFilesBtn');
+const uploadAnnouncementFolderBtn = document.getElementById('uploadAnnouncementFolderBtn');
+const announcementFilesPreview = document.getElementById('announcementFilesPreview');
+
+let selectedAnnouncementFiles = [];
+
+if (uploadAnnouncementFilesBtn) {
+  uploadAnnouncementFilesBtn.addEventListener('click', () => {
+    announcementFilesInput.click();
+  });
+}
+
+if (uploadAnnouncementFolderBtn) {
+  uploadAnnouncementFolderBtn.addEventListener('click', () => {
+    announcementFolderInput.click();
+  });
+}
+
+if (announcementFilesInput) {
+  announcementFilesInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > 25 * 1024 * 1024) {
+      showError('Total file size must be less than 25MB');
+      announcementFilesInput.value = '';
+      return;
+    }
+
+    selectedAnnouncementFiles = files;
+    updateAnnouncementFilesPreview();
+  });
+}
+
+if (announcementFolderInput) {
+  announcementFolderInput.addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > 25 * 1024 * 1024) {
+      showError('Total folder size must be less than 25MB');
+      announcementFolderInput.value = '';
+      return;
+    }
+
+    selectedAnnouncementFiles = files;
+    updateAnnouncementFilesPreview();
+  });
+}
+
+function updateAnnouncementFilesPreview() {
+  if (selectedAnnouncementFiles.length === 0) {
+    announcementFilesPreview.innerHTML = '';
+    return;
+  }
+
+  announcementFilesPreview.innerHTML = selectedAnnouncementFiles.map((file, index) => {
+    const ext = getFileExtension(file.name);
+    const color = getFileIconColor(ext);
+    return `
+      <div class="file-preview-list-item">
+        <div class="file-preview-list-icon" style="background: ${color};">${ext || 'FILE'}</div>
+        <div class="file-preview-list-info">
+          <div class="file-preview-list-name">${escapeHtml(file.name)}</div>
+          <div class="file-preview-list-size">${formatFileSize(file.size)}</div>
+        </div>
+        <button class="file-preview-list-remove" onclick="removeAnnouncementFile(${index})">×</button>
+      </div>
+    `;
+  }).join('');
+}
+
+window.removeAnnouncementFile = (index) => {
+  selectedAnnouncementFiles.splice(index, 1);
+  updateAnnouncementFilesPreview();
+  announcementFilesInput.value = '';
+  announcementFolderInput.value = '';
+};
+
 // Post new announcement
 postAnnouncementBtn.addEventListener('click', async () => {
   const title = announcementTitle?.value.trim() || 'Announcement';
@@ -2301,18 +2855,49 @@ postAnnouncementBtn.addEventListener('click', async () => {
       announcementData.imageUrl = selectedAnnouncementImage;
     }
 
+    // Add files if selected
+    if (selectedAnnouncementFiles.length > 0) {
+      postAnnouncementBtn.textContent = 'Uploading files...';
+
+      const filesData = [];
+      for (let i = 0; i < selectedAnnouncementFiles.length; i++) {
+        const file = selectedAnnouncementFiles[i];
+        const fileData = await uploadFileToBase64(file);
+
+        // Preserve folder path if it exists
+        const fileName = file.webkitRelativePath || file.name;
+
+        filesData.push({
+          name: fileName,
+          size: file.size,
+          type: file.type,
+          data: fileData
+        });
+
+        if (selectedAnnouncementFiles.length > 1) {
+          postAnnouncementBtn.textContent = `Uploading ${i + 1}/${selectedAnnouncementFiles.length}...`;
+        }
+      }
+
+      announcementData.files = filesData;
+    }
+
     await database.ref('announcements').push(announcementData);
 
     announcementText.value = '';
     if (announcementTitle) announcementTitle.value = '';
     removeAnnouncementImage();
+    selectedAnnouncementFiles = [];
+    updateAnnouncementFilesPreview();
+    announcementFilesInput.value = '';
+    announcementFolderInput.value = '';
 
     showSuccess('Announcement posted!');
   } catch (error) {
     showError('Failed to post announcement');
   } finally {
     postAnnouncementBtn.disabled = false;
-    postAnnouncementBtn.textContent = '📢 Post Announcement';
+    postAnnouncementBtn.textContent = '📢 发布公告';
   }
 });
 
@@ -2371,12 +2956,13 @@ async function loadAnnouncementsManager() {
             <span class="announcement-badge">${escapeHtml(announcement.badge || 'Important')}</span>
           </div>
           <div class="announcement-item-actions">
-            <button class="btn-icon" onclick="editAnnouncement('${announcementId}', '${escapeHtml(announcement.title)}', '${escapeHtml(announcement.text)}', '${escapeHtml(announcement.badge)}')">✏️ Edit</button>
-            <button class="btn-icon danger" onclick="deleteAnnouncement('${announcementId}')">🗑️ Delete</button>
+            <button class="btn-icon" onclick="editAnnouncement('${announcementId}', '${escapeHtml(announcement.title)}', '${escapeHtml(announcement.text)}', '${escapeHtml(announcement.badge)}')">Edit</button>
+            <button class="btn-icon danger" onclick="deleteAnnouncement('${announcementId}')">Delete</button>
           </div>
         </div>
         <p class="announcement-text">${escapeHtml(announcement.text)}</p>
         ${imageHtml}
+        ${announcement.files ? createFilesDisplay(announcement.files, announcementId) : ''}
       `;
 
       announcementsManager.appendChild(item);
@@ -2893,7 +3479,7 @@ function updateTypingIndicator() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  console.log('💬 Typing text:', typingText);
+  console.log('Typing text:', typingText);
 }
 
 // Clean up typing status on logout
@@ -3237,6 +3823,12 @@ async function updateOnlineUsersList(statusSnapshot) {
     return;
   }
 
+  // Add loading state with fade out animation
+  const isFirstLoad = onlineUsersContainer.querySelector('.loading-text');
+  if (isFirstLoad) {
+    onlineUsersContainer.classList.add('loading-fade-out');
+  }
+
   const onlineUsers = [];
 
   // Get all online users
@@ -3264,10 +3856,17 @@ async function updateOnlineUsersList(statusSnapshot) {
   const usersData = await Promise.all(userDataPromises);
   console.log('📊 User data loaded:', usersData);
 
+  // Wait for fade out animation if it's first load
+  if (isFirstLoad) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+  }
+
   // Update display
   if (usersData.length === 0) {
     onlineUsersContainer.innerHTML = '<div class="no-online-users">No users online</div>';
     console.log('⚠️ No users online');
+    onlineUsersContainer.classList.remove('loading-fade-out');
+    onlineUsersContainer.classList.add('content-fade-in');
     return;
   }
 
@@ -3286,6 +3885,15 @@ async function updateOnlineUsersList(statusSnapshot) {
       <strong>Online:</strong> ${formattedUsers}
     </div>
   `;
+
+  // Remove loading class and add fade in animation
+  onlineUsersContainer.classList.remove('loading-fade-out');
+  onlineUsersContainer.classList.add('content-fade-in');
+
+  // Remove animation class after animation completes
+  setTimeout(() => {
+    onlineUsersContainer.classList.remove('content-fade-in');
+  }, 500);
 
   console.log('✅ Online users list updated');
 }
@@ -3407,7 +4015,7 @@ if (updateNowBtn) {
     if ('caches' in window) {
       const names = await caches.keys();
       for (let name of names) {
-        console.log('🗑️ Deleting cache:', name);
+        console.log('Deleting cache:', name);
         await caches.delete(name);
       }
     }
@@ -3416,7 +4024,7 @@ if (updateNowBtn) {
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (let registration of registrations) {
-        console.log('🗑️ Unregistering Service Worker');
+        console.log('Unregistering Service Worker');
         await registration.unregister();
       }
     }
