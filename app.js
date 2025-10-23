@@ -380,6 +380,11 @@ function loadMessages() {
     // Only add animation class if it's truly a new message
     if (isNewMessage) {
       messageEl.classList.add('animate-new');
+
+      // Remove animation class after animation completes to prevent re-animation on scroll
+      setTimeout(() => {
+        messageEl.classList.remove('animate-new');
+      }, 500); // 500ms = animation duration (300ms) + buffer
     }
 
     const isAdminMsg = userData?.role === 'admin';
@@ -456,8 +461,8 @@ function loadMessages() {
       messagesContainer.appendChild(messageEl);
     }
 
-    // Smooth scroll to bottom if user was already near bottom
-    if (isNearBottom) {
+    // Only auto-scroll for own messages, not others' messages
+    if (isNearBottom && msg.userId === currentUser.uid) {
       requestAnimationFrame(() => {
         messagesContainer.scrollTo({
           top: messagesContainer.scrollHeight,
@@ -1874,6 +1879,11 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
   // Only add animation for truly new messages
   if (isNewMessage) {
     messageEl.classList.add('animate-new');
+
+    // Remove animation class after animation completes to prevent re-animation on scroll
+    setTimeout(() => {
+      messageEl.classList.remove('animate-new');
+    }, 500); // 500ms = animation duration (300ms) + buffer
   }
 
   const isAdminMsg = userData?.role === 'admin';

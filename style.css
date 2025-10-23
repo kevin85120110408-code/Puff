@@ -756,9 +756,24 @@ input[type="checkbox"] {
     /* No animation by default */
 }
 
-/* Completely disable all message animations for now */
-.message.animate-new {
-    /* Animation disabled */
+/* Animation only for truly new messages - plays once when added to DOM */
+.message.animate-new .message-text {
+    animation: fadeInOnce 0.3s ease both;
+}
+
+.message.animate-new .message-actions {
+    animation: fadeInOnce 0.3s ease 0.1s both;
+}
+
+@keyframes fadeInOnce {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes messageSlideIn {
@@ -883,7 +898,7 @@ input[type="checkbox"] {
     font-size: 15px;
     line-height: 1.7;
     word-wrap: break-word;
-    animation: fadeIn 0.3s ease 0.1s both;
+    /* Animation removed - only new messages should animate */
 }
 
 @keyframes fadeIn {
@@ -901,7 +916,7 @@ input[type="checkbox"] {
     gap: 8px;
     margin-top: 8px;
     flex-wrap: wrap;
-    animation: fadeIn 0.3s ease 0.2s both;
+    /* Animation removed - only new messages should animate */
 }
 
 .btn-action {
