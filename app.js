@@ -122,8 +122,14 @@ auth.onAuthStateChanged(async (user) => {
 
     // Initialize online users list
     console.log('🚀 About to initialize online users list...');
+    console.log('🔍 Checking if initOnlineUsersList function exists:', typeof initOnlineUsersList);
     setTimeout(() => {
-      initOnlineUsersList();
+      console.log('⏰ Timeout fired, calling initOnlineUsersList...');
+      if (typeof initOnlineUsersList === 'function') {
+        initOnlineUsersList();
+      } else {
+        console.error('❌ initOnlineUsersList is not a function!');
+      }
     }, 1000); // Delay 1 second to ensure DOM is ready
   } else {
     currentUser = null;
@@ -3014,14 +3020,30 @@ function selectMention(username, uid) {
 // Initialize online users display
 function initOnlineUsersList() {
   console.log('🎯 Initializing online users list...');
+  console.log('🔍 Database object:', database);
   const container = document.getElementById('onlineUsersList');
   console.log('📦 Container found:', container);
 
+  if (!container) {
+    console.error('❌ Container #onlineUsersList not found in DOM!');
+    return;
+  }
+
+  if (!database) {
+    console.error('❌ Firebase database not initialized!');
+    return;
+  }
+
   // Listen for status changes
+  console.log('👂 Setting up status listener...');
   database.ref('status').on('value', async (snapshot) => {
-    console.log('🔄 Status update received');
+    console.log('🔄 Status update received, snapshot:', snapshot.val());
     await updateOnlineUsersList(snapshot);
+  }, (error) => {
+    console.error('❌ Error listening to status:', error);
   });
+
+  console.log('✅ Online users list listener set up successfully');
 }
 
 async function updateOnlineUsersList(statusSnapshot) {
