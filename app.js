@@ -67,16 +67,23 @@ function showPage(page) {
 }
 
 // Custom Modal System
-const customModalOverlay = document.getElementById('customModalOverlay');
-const customModal = document.getElementById('customModal');
-const customModalIcon = document.getElementById('customModalIcon');
-const customModalTitle = document.getElementById('customModalTitle');
-const customModalMessage = document.getElementById('customModalMessage');
-const customModalInputContainer = document.getElementById('customModalInputContainer');
-const customModalInput = document.getElementById('customModalInput');
-const customModalButtons = document.getElementById('customModalButtons');
-
 function showCustomModal(options) {
+  // Get elements inside function to ensure DOM is loaded
+  const customModalOverlay = document.getElementById('customModalOverlay');
+  const customModal = document.getElementById('customModal');
+  const customModalIcon = document.getElementById('customModalIcon');
+  const customModalTitle = document.getElementById('customModalTitle');
+  const customModalMessage = document.getElementById('customModalMessage');
+  const customModalInputContainer = document.getElementById('customModalInputContainer');
+  const customModalInput = document.getElementById('customModalInput');
+  const customModalButtons = document.getElementById('customModalButtons');
+
+  if (!customModalOverlay || !customModal) {
+    console.error('Modal elements not found, falling back to alert');
+    alert(options.message || '');
+    return;
+  }
+
   const {
     icon = '💬',
     title = '',
@@ -184,7 +191,10 @@ function showCustomModal(options) {
 }
 
 function hideCustomModal() {
-  customModalOverlay.classList.remove('show');
+  const customModalOverlay = document.getElementById('customModalOverlay');
+  if (customModalOverlay) {
+    customModalOverlay.classList.remove('show');
+  }
 }
 
 // Replace alert, confirm, prompt with custom modals
