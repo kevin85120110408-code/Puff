@@ -461,14 +461,25 @@ function loadMessages() {
       messagesContainer.appendChild(messageEl);
     }
 
-    // Only auto-scroll for own messages, not others' messages
-    if (isNearBottom && msg.userId === currentUser.uid) {
+    // Auto-scroll logic:
+    // 1. Always scroll for new messages (isNewMessage = true)
+    // 2. For initial load, scroll to bottom after a short delay
+    if (isNewMessage) {
+      // New message - always scroll with smooth animation
       requestAnimationFrame(() => {
         messagesContainer.scrollTo({
           top: messagesContainer.scrollHeight,
           behavior: 'smooth'
         });
       });
+    } else if (isNearBottom || messagesContainer.scrollTop === 0) {
+      // Initial load - scroll to bottom after messages are rendered
+      setTimeout(() => {
+        messagesContainer.scrollTo({
+          top: messagesContainer.scrollHeight,
+          behavior: 'auto'
+        });
+      }, 100);
     }
 
     // Listen for read status updates
