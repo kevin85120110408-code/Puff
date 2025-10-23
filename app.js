@@ -53,6 +53,9 @@ const usersTable = document.getElementById('usersTable');
 const searchUser = document.getElementById('searchUser');
 const announcementText = document.getElementById('announcementText');
 const postAnnouncementBtn = document.getElementById('postAnnouncementBtn');
+const appVersionInput = document.getElementById('appVersionInput');
+const updateVersionBtn = document.getElementById('updateVersionBtn');
+const currentVersionDisplay = document.getElementById('currentVersionDisplay');
 
 // Helper Functions
 function showPage(page) {
@@ -3126,4 +3129,219 @@ async function updateOnlineUsersList(statusSnapshot) {
   `;
 
   console.log('✅ Online users list updated');
+}
+
+// ============================================
+// REAL-TIME VERSION CHECK
+// ============================================
+
+const updateNotification = document.getElementById('updateNotification');
+const updateNowBtn = document.getElementById('updateNowBtn');
+const updateLaterBtn = document.getElementById('updateLaterBtn');
+const newVersionNumber = document.getElementById('newVersionNumber');
+
+let updateCheckInterval = null;
+let newVersionAvailable = null;
+
+// Start real-time version checking
+function startVersionCheck() {
+  console.log('🔍 Starting real-time version check...');
+
+  // Check immediately
+  checkForUpdates();
+
+  // Then check every 30 seconds
+  updateCheckInterval = setInterval(() => {
+    checkForUpdates();
+  }, 30000); // 30 seconds
+}
+
+// Check for updates from Firebase
+async function checkForUpdates() {
+  try {
+    const versionRef = database.ref('appVersion');
+    const snapshot = await versionRef.once('value');
+
+    if (snapshot.exists()) {
+      const serverVersion = snapshot.val().current;
+      const currentVersion = localStorage.getItem('app_version');
+
+      console.log('📦 Server version:', serverVersion);
+      console.log('💾 Local version:', currentVersion);
+
+      if (serverVersion && currentVersion && serverVersion !== currentVersion) {
+        console.log('🆕 New version available:', serverVersion);
+        newVersionAvailable = serverVersion;
+        showUpdateNotification(serverVersion);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to check for updates:', error);
+  }
+}
+
+// Show update notification
+function showUpdateNotification(version) {
+  if (!updateNotification) return;
+
+  newVersionNumber.textContent = version;
+  updateNotification.classList.add('show');
+
+  // Play notification sound (optional)
+  playNotificationSound();
+}
+
+// Hide update notification
+function hideUpdateNotification() {
+  if (!updateNotification) return;
+  updateNotification.classList.remove('show');
+}
+
+// Update now button
+if (updateNowBtn) {
+  updateNowBtn.addEventListener('click', async () => {
+    console.log('🔄 User clicked Update Now');
+
+    // Update local version
+    localStorage.setItem('app_version', newVersionAvailable);
+
+    // Clear all caches
+    if ('caches' in window) {
+      const names = await caches.keys();
+      for (let name of names) {
+        console.log('🗑️ Deleting cache:', name);
+        await caches.delete(name);
+      }
+    }
+
+    // Unregister service workers
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (let registration of registrations) {
+        console.log('🗑️ Unregistering Service Worker');
+        await registration.unregister();
+      }
+    }
+
+    // Show loading message
+    updateNotification.innerHTML = `
+      <div class="update-icon">⏳</div>
+      <div class="update-content">
+        <div class="update-title">Updating...</div>
+        <div class="update-message">Please wait while we update the app</div>
+      </div>
+    `;
+
+    // Reload page
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 1000);
+  });
+}
+
+// Update later button
+if (updateLaterBtn) {
+  updateLaterBtn.addEventListener('click', () => {
+    console.log('⏰ User clicked Update Later');
+    hideUpdateNotification();
+
+    // Show again after 5 minutes
+    setTimeout(() => {
+      if (newVersionAvailable) {
+        showUpdateNotification(newVersionAvailable);
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+  });
+}
+
+// Start version check when user is logged in
+auth.onAuthStateChanged((user) => {
+  if (user && !updateCheckInterval) {
+    // Start checking for updates
+    startVersionCheck();
+
+    // Load current version for admin panel
+    loadCurrentVersion();
+  } else if (!user && updateCheckInterval) {
+    // Stop checking when logged out
+    clearInterval(updateCheckInterval);
+    updateCheckInterval = null;
+  }
+});
+
+// ============================================
+// ADMIN VERSION MANAGEMENT
+// ============================================
+
+// Load current version from Firebase
+async function loadCurrentVersion() {
+  try {
+    const versionRef = database.ref('appVersion');
+    const snapshot = await versionRef.once('value');
+
+    if (snapshot.exists()) {
+      const versionData = snapshot.val();
+      const version = versionData.current;
+
+      if (currentVersionDisplay) {
+        currentVersionDisplay.textContent = `当前: v${version}`;
+      }
+
+      if (appVersionInput) {
+        appVersionInput.placeholder = version;
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to load current version:', error);
+  }
+}
+
+// Update version button
+if (updateVersionBtn) {
+  updateVersionBtn.addEventListener('click', async () => {
+    const newVersion = appVersionInput.value.trim();
+
+    if (!newVersion) {
+      showError('请输入新版本号');
+      return;
+    }
+
+    // Validate version format (e.g., 5.1, 5.2.1)
+    if (!/^\d+(\.\d+)*$/.test(newVersion)) {
+      showError('版本号格式不正确 (例如: 5.1 或 5.2.1)');
+      return;
+    }
+
+    if (!confirm(`确定要将版本更新到 v${newVersion} 吗?\n\n这将强制所有在线用户刷新页面!`)) {
+      return;
+    }
+
+    try {
+      updateVersionBtn.disabled = true;
+      updateVersionBtn.textContent = '更新中...';
+
+      // Update version in Firebase
+      await database.ref('appVersion').set({
+        current: newVersion,
+        updatedAt: Date.now(),
+        updatedBy: currentUser.uid
+      });
+
+      showSuccess(`版本已更新到 v${newVersion}!`);
+
+      // Update display
+      currentVersionDisplay.textContent = `当前: v${newVersion}`;
+      appVersionInput.value = '';
+      appVersionInput.placeholder = newVersion;
+
+      console.log('✅ Version updated to:', newVersion);
+
+    } catch (error) {
+      console.error('❌ Failed to update version:', error);
+      showError('更新版本失败: ' + error.message);
+    } finally {
+      updateVersionBtn.disabled = false;
+      updateVersionBtn.textContent = '更新版本';
+    }
+  });
 }
