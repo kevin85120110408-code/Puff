@@ -626,6 +626,12 @@ function loadMessages() {
 
     loadedMessages.add(messageId);
     const msg = snapshot.val();
+
+    // Debug: Log message data
+    if (msg.files) {
+      console.log('Message with files:', messageId, msg.files);
+    }
+
     const userData = await getUserData(msg.userId);
 
     // Track oldest message for infinite scroll
@@ -2104,15 +2110,11 @@ async function compressImage(file) {
 
 // Create files display (folder or individual files)
 function createFilesDisplay(files, messageId) {
-  console.log('createFilesDisplay called:', { files, messageId, isArray: Array.isArray(files) });
-
-  if (!files || files.length === 0) return '';
+  if (!files) return '';
 
   // Ensure files is an array
   const filesArray = Array.isArray(files) ? files : [files];
   if (filesArray.length === 0) return '';
-
-  console.log('Files array:', filesArray);
 
   // Check if files are from a folder (have path separator in name)
   const hasPath = filesArray.some(f => f && f.name && (f.name.includes('/') || f.name.includes('\\')));
