@@ -3140,28 +3140,18 @@ const updateNowBtn = document.getElementById('updateNowBtn');
 const updateLaterBtn = document.getElementById('updateLaterBtn');
 const newVersionNumber = document.getElementById('newVersionNumber');
 
-let updateCheckInterval = null;
+let versionListener = null;
 let newVersionAvailable = null;
+let isUpdating = false;
 
-// Start real-time version checking
+// Start real-time version checking with Firebase listener
 function startVersionCheck() {
-  console.log('🔍 Starting real-time version check...');
+  console.log('🔍 Starting real-time version check with Firebase listener...');
 
-  // Check immediately
-  checkForUpdates();
+  const versionRef = database.ref('appVersion');
 
-  // Then check every 30 seconds
-  updateCheckInterval = setInterval(() => {
-    checkForUpdates();
-  }, 30000); // 30 seconds
-}
-
-// Check for updates from Firebase
-async function checkForUpdates() {
-  try {
-    const versionRef = database.ref('appVersion');
-    const snapshot = await versionRef.once('value');
-
+  // Use .on() for real-time updates instead of polling
+  versionListener = versionRef.on('value', (snapshot) => {
     if (snapshot.exists()) {
       const serverVersion = snapshot.val().current;
       const currentVersion = localStorage.getItem('app_version');
@@ -3169,14 +3159,33 @@ async function checkForUpdates() {
       console.log('📦 Server version:', serverVersion);
       console.log('💾 Local version:', currentVersion);
 
+      // Don't show notification if we're in the middle of updating
+      if (isUpdating) {
+        console.log('⏳ Update in progress, skipping notification');
+        return;
+      }
+
       if (serverVersion && currentVersion && serverVersion !== currentVersion) {
         console.log('🆕 New version available:', serverVersion);
         newVersionAvailable = serverVersion;
         showUpdateNotification(serverVersion);
+      } else if (serverVersion === currentVersion) {
+        // Versions match, hide notification if showing
+        hideUpdateNotification();
       }
     }
-  } catch (error) {
-    console.error('❌ Failed to check for updates:', error);
+  }, (error) => {
+    console.error('❌ Failed to listen for version updates:', error);
+  });
+}
+
+// Stop version checking
+function stopVersionCheck() {
+  if (versionListener) {
+    console.log('🛑 Stopping version check listener');
+    const versionRef = database.ref('appVersion');
+    versionRef.off('value', versionListener);
+    versionListener = null;
   }
 }
 
@@ -3202,8 +3211,24 @@ if (updateNowBtn) {
   updateNowBtn.addEventListener('click', async () => {
     console.log('🔄 User clicked Update Now');
 
-    // Update local version
+    // Set updating flag to prevent repeated notifications
+    isUpdating = true;
+
+    // Stop listening for version changes
+    stopVersionCheck();
+
+    // Update local version FIRST before clearing cache
     localStorage.setItem('app_version', newVersionAvailable);
+    console.log('✅ Updated local version to:', newVersionAvailable);
+
+    // Show loading message
+    updateNotification.innerHTML = `
+      <div class="update-icon">⏳</div>
+      <div class="update-content">
+        <div class="update-title">Updating...</div>
+        <div class="update-message">Please wait while we update the app</div>
+      </div>
+    `;
 
     // Clear all caches
     if ('caches' in window) {
@@ -3223,19 +3248,10 @@ if (updateNowBtn) {
       }
     }
 
-    // Show loading message
-    updateNotification.innerHTML = `
-      <div class="update-icon">⏳</div>
-      <div class="update-content">
-        <div class="update-title">Updating...</div>
-        <div class="update-message">Please wait while we update the app</div>
-      </div>
-    `;
-
-    // Reload page
+    // Reload page with force refresh
     setTimeout(() => {
       window.location.reload(true);
-    }, 1000);
+    }, 500);
   });
 }
 
@@ -3256,16 +3272,15 @@ if (updateLaterBtn) {
 
 // Start version check when user is logged in
 auth.onAuthStateChanged((user) => {
-  if (user && !updateCheckInterval) {
-    // Start checking for updates
+  if (user && !versionListener) {
+    // Start checking for updates with real-time listener
     startVersionCheck();
 
     // Load current version for admin panel
     loadCurrentVersion();
-  } else if (!user && updateCheckInterval) {
+  } else if (!user && versionListener) {
     // Stop checking when logged out
-    clearInterval(updateCheckInterval);
-    updateCheckInterval = null;
+    stopVersionCheck();
   }
 });
 
