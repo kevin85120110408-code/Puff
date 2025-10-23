@@ -243,7 +243,24 @@
 <span class="menu-icon">⚙️</span>
 <span class="menu-text">系统设置</span>
 </button>
+<button class="admin-menu-item" data-tab="analytics">
+<span class="menu-icon">📈</span>
+<span class="menu-text">数据分析</span>
+</button>
+<button class="admin-menu-item" data-tab="permissions">
+<span class="menu-icon">🔐</span>
+<span class="menu-text">权限管理</span>
+</button>
+<button class="admin-menu-item" data-tab="backup">
+<span class="menu-icon">💾</span>
+<span class="menu-text">备份恢复</span>
+</button>
 </div>
+
+<!-- Mobile Menu Toggle -->
+<button class="admin-mobile-toggle" id="adminMobileToggle">
+<span class="hamburger-icon">☰</span>
+</button>
 </div>
 
 <div class="admin-main">
@@ -512,6 +529,202 @@
 <button class="btn btn-danger" onclick="clearAllMessages()">🗑️ 清空所有消息</button>
 <button class="btn btn-danger" onclick="resetDatabase()">⚠️ 重置数据库</button>
 <button class="btn btn-danger" onclick="exportData()">📥 导出所有数据</button>
+</div>
+</div>
+</div>
+
+<!-- Analytics Tab -->
+<div class="admin-tab" id="tab-analytics">
+<div class="admin-header">
+<h2 class="admin-title">数据分析</h2>
+<p class="admin-subtitle">深入了解社区数据和趋势</p>
+</div>
+
+<div class="stats-grid">
+<div class="stat-card">
+<div class="stat-label">日活跃用户</div>
+<div class="stat-value" id="dailyActiveUsers">0</div>
+<div class="stat-change positive">较昨日 +5%</div>
+</div>
+<div class="stat-card">
+<div class="stat-label">平均响应时间</div>
+<div class="stat-value" id="avgResponseTime">2.3分钟</div>
+<div class="stat-change positive">较昨日 -12%</div>
+</div>
+<div class="stat-card">
+<div class="stat-label">消息互动率</div>
+<div class="stat-value" id="engagementRate">68%</div>
+<div class="stat-change positive">较昨日 +3%</div>
+</div>
+<div class="stat-card">
+<div class="stat-label">新增用户</div>
+<div class="stat-value" id="newUsersToday">12</div>
+<div class="stat-change positive">较昨日 +20%</div>
+</div>
+</div>
+
+<div class="admin-grid">
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">用户活跃度趋势</h3>
+</div>
+<div class="chart-container">
+<canvas id="activityChart"></canvas>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">消息类型分布</h3>
+</div>
+<div class="chart-container">
+<canvas id="messageTypeChart"></canvas>
+</div>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">热门话题</h3>
+</div>
+<div class="trending-topics" id="trendingTopics">
+<div class="loading-text">加载中...</div>
+</div>
+</div>
+</div>
+
+<!-- Permissions Tab -->
+<div class="admin-tab" id="tab-permissions">
+<div class="admin-header">
+<h2 class="admin-title">权限管理</h2>
+<p class="admin-subtitle">管理用户角色和权限</p>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">角色列表</h3>
+<button class="btn btn-primary" onclick="createRole()">➕ 创建角色</button>
+</div>
+<div class="roles-list" id="rolesList">
+<div class="role-item">
+<div class="role-info">
+<div class="role-name">管理员</div>
+<div class="role-desc">拥有所有权限</div>
+</div>
+<div class="role-actions">
+<button class="btn-icon" onclick="editRole('admin')">编辑</button>
+</div>
+</div>
+<div class="role-item">
+<div class="role-info">
+<div class="role-name">版主</div>
+<div class="role-desc">可以管理消息和用户</div>
+</div>
+<div class="role-actions">
+<button class="btn-icon" onclick="editRole('moderator')">编辑</button>
+<button class="btn-icon danger" onclick="deleteRole('moderator')">删除</button>
+</div>
+</div>
+<div class="role-item">
+<div class="role-info">
+<div class="role-name">普通用户</div>
+<div class="role-desc">基本权限</div>
+</div>
+<div class="role-actions">
+<button class="btn-icon" onclick="editRole('user')">编辑</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">批量操作</h3>
+</div>
+<div class="batch-operations">
+<select id="batchAction" class="form-input">
+<option value="">选择操作...</option>
+<option value="promote">提升为版主</option>
+<option value="demote">降级为普通用户</option>
+<option value="ban">批量封禁</option>
+<option value="unban">批量解封</option>
+<option value="delete">批量删除</option>
+</select>
+<button class="btn btn-primary" onclick="executeBatchAction()">执行操作</button>
+</div>
+<div class="batch-users" id="batchUsersList">
+<p style="color: #666; font-size: 14px;">选择用户后执行批量操作</p>
+</div>
+</div>
+</div>
+
+<!-- Backup Tab -->
+<div class="admin-tab" id="tab-backup">
+<div class="admin-header">
+<h2 class="admin-title">备份与恢复</h2>
+<p class="admin-subtitle">保护您的数据安全</p>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">创建备份</h3>
+</div>
+<div class="backup-options">
+<div class="backup-option">
+<label class="checkbox-label">
+<input type="checkbox" id="backupUsers" checked>
+<span>用户数据</span>
+</label>
+</div>
+<div class="backup-option">
+<label class="checkbox-label">
+<input type="checkbox" id="backupMessages" checked>
+<span>消息数据</span>
+</label>
+</div>
+<div class="backup-option">
+<label class="checkbox-label">
+<input type="checkbox" id="backupAnnouncements" checked>
+<span>公告数据</span>
+</label>
+</div>
+<div class="backup-option">
+<label class="checkbox-label">
+<input type="checkbox" id="backupSettings" checked>
+<span>系统设置</span>
+</label>
+</div>
+</div>
+<button class="btn btn-primary" onclick="createBackup()">📦 创建备份</button>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">备份历史</h3>
+</div>
+<div class="backup-list" id="backupList">
+<div class="backup-item">
+<div class="backup-info">
+<div class="backup-name">完整备份 - 2024-01-15</div>
+<div class="backup-meta">大小: 2.5 MB • 包含: 所有数据</div>
+</div>
+<div class="backup-actions">
+<button class="btn-icon" onclick="downloadBackup('backup-1')">下载</button>
+<button class="btn-icon" onclick="restoreBackup('backup-1')">恢复</button>
+<button class="btn-icon danger" onclick="deleteBackup('backup-1')">删除</button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">恢复数据</h3>
+</div>
+<div class="restore-section">
+<input type="file" id="restoreFile" accept=".json" style="display: none;">
+<button class="btn btn-secondary" onclick="document.getElementById('restoreFile').click()">📁 选择备份文件</button>
+<p style="color: #666; font-size: 13px; margin-top: 10px;">⚠️ 恢复操作将覆盖当前数据，请谨慎操作</p>
 </div>
 </div>
 </div>

@@ -1187,6 +1187,12 @@ function switchAdminTab(tabName) {
     tab.classList.toggle('active', tab.id === `tab-${tabName}`);
   });
 
+  // Close mobile menu after selection
+  const sidebar = document.querySelector('.admin-sidebar');
+  if (sidebar && sidebar.classList.contains('mobile-open')) {
+    sidebar.classList.remove('mobile-open');
+  }
+
   // Load tab content
   switch(tabName) {
     case 'overview':
@@ -1207,8 +1213,266 @@ function switchAdminTab(tabName) {
     case 'settings':
       // Settings are static
       break;
+    case 'analytics':
+      loadAnalytics();
+      break;
+    case 'permissions':
+      loadPermissions();
+      break;
+    case 'backup':
+      loadBackup();
+      break;
   }
 }
+
+// Mobile menu toggle
+const adminMobileToggle = document.getElementById('adminMobileToggle');
+if (adminMobileToggle) {
+  adminMobileToggle.addEventListener('click', () => {
+    const sidebar = document.querySelector('.admin-sidebar');
+    if (sidebar) {
+      sidebar.classList.toggle('mobile-open');
+    }
+  });
+}
+
+// Close mobile menu when clicking outside
+document.addEventListener('click', (e) => {
+  const sidebar = document.querySelector('.admin-sidebar');
+  const toggle = document.getElementById('adminMobileToggle');
+
+  if (sidebar && sidebar.classList.contains('mobile-open')) {
+    if (!sidebar.contains(e.target) && e.target !== toggle && !toggle.contains(e.target)) {
+      sidebar.classList.remove('mobile-open');
+    }
+  }
+});
+
+// ============================================
+// NEW ADMIN FEATURES
+// ============================================
+
+// Load Analytics
+function loadAnalytics() {
+  // Simulate loading analytics data
+  setTimeout(() => {
+    document.getElementById('dailyActiveUsers').textContent = Math.floor(Math.random() * 100 + 50);
+    document.getElementById('avgResponseTime').textContent = (Math.random() * 5 + 1).toFixed(1) + '分钟';
+    document.getElementById('engagementRate').textContent = Math.floor(Math.random() * 30 + 60) + '%';
+    document.getElementById('newUsersToday').textContent = Math.floor(Math.random() * 20 + 5);
+
+    // Load trending topics
+    loadTrendingTopics();
+  }, 500);
+}
+
+// Load Trending Topics
+function loadTrendingTopics() {
+  const container = document.getElementById('trendingTopics');
+  if (!container) return;
+
+  const topics = [
+    { title: '新功能讨论', messages: 45, participants: 12 },
+    { title: '技术支持', messages: 38, participants: 8 },
+    { title: '反馈建议', messages: 29, participants: 15 },
+    { title: '社区活动', messages: 22, participants: 10 }
+  ];
+
+  container.innerHTML = topics.map(topic => `
+    <div class="trending-topic">
+      <div class="topic-title">${topic.title}</div>
+      <div class="topic-stats">
+        <span>💬 ${topic.messages} 消息</span>
+        <span>👥 ${topic.participants} 参与者</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// Load Permissions
+function loadPermissions() {
+  console.log('Permissions tab loaded');
+}
+
+// Load Backup
+function loadBackup() {
+  console.log('Backup tab loaded');
+}
+
+// Create Role
+window.createRole = function() {
+  showCustomModal({
+    icon: '🔐',
+    title: '创建新角色',
+    message: '请输入角色名称',
+    input: true,
+    inputPlaceholder: '角色名称',
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '创建',
+        style: 'primary',
+        onClick: (inputValue) => {
+          if (inputValue && inputValue.trim()) {
+            showSuccess(`角色 "${inputValue}" 创建成功！`);
+          } else {
+            showError('请输入角色名称');
+          }
+        }
+      }
+    ]
+  });
+};
+
+// Edit Role
+window.editRole = function(roleId) {
+  showCustomModal({
+    icon: '✏️',
+    title: '编辑角色',
+    message: `编辑角色: ${roleId}`,
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '保存',
+        style: 'primary',
+        onClick: () => {
+          showSuccess('角色更新成功！');
+        }
+      }
+    ]
+  });
+};
+
+// Delete Role
+window.deleteRole = function(roleId) {
+  showCustomModal({
+    icon: '⚠️',
+    title: '删除角色',
+    message: `确定要删除角色 "${roleId}" 吗？此操作不可撤销。`,
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '删除',
+        style: 'danger',
+        onClick: () => {
+          showSuccess('角色已删除');
+        }
+      }
+    ]
+  });
+};
+
+// Execute Batch Action
+window.executeBatchAction = function() {
+  const action = document.getElementById('batchAction').value;
+  if (!action) {
+    showError('请选择要执行的操作');
+    return;
+  }
+
+  showCustomModal({
+    icon: '⚠️',
+    title: '确认批量操作',
+    message: `确定要执行批量操作吗？`,
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '确认',
+        style: 'primary',
+        onClick: () => {
+          showSuccess('批量操作执行成功！');
+        }
+      }
+    ]
+  });
+};
+
+// Create Backup
+window.createBackup = function() {
+  const includeUsers = document.getElementById('backupUsers').checked;
+  const includeMessages = document.getElementById('backupMessages').checked;
+  const includeAnnouncements = document.getElementById('backupAnnouncements').checked;
+  const includeSettings = document.getElementById('backupSettings').checked;
+
+  showCustomModal({
+    icon: '💾',
+    title: '创建备份',
+    message: '正在创建备份，请稍候...',
+    buttons: []
+  });
+
+  setTimeout(() => {
+    hideCustomModal();
+    showSuccess('备份创建成功！');
+  }, 2000);
+};
+
+// Download Backup
+window.downloadBackup = function(backupId) {
+  showSuccess(`正在下载备份 ${backupId}...`);
+};
+
+// Restore Backup
+window.restoreBackup = function(backupId) {
+  showCustomModal({
+    icon: '⚠️',
+    title: '恢复备份',
+    message: '恢复备份将覆盖当前所有数据，确定要继续吗？',
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '恢复',
+        style: 'danger',
+        onClick: () => {
+          showSuccess('备份恢复成功！');
+        }
+      }
+    ]
+  });
+};
+
+// Delete Backup
+window.deleteBackup = function(backupId) {
+  showCustomModal({
+    icon: '🗑️',
+    title: '删除备份',
+    message: '确定要删除此备份吗？',
+    buttons: [
+      {
+        text: '取消',
+        style: 'secondary',
+        onClick: () => {}
+      },
+      {
+        text: '删除',
+        style: 'danger',
+        onClick: () => {
+          showSuccess('备份已删除');
+        }
+      }
+    ]
+  });
+};
 
 // Add event listeners to menu items
 document.querySelectorAll('.admin-menu-item').forEach(item => {
