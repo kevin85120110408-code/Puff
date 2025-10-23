@@ -822,7 +822,10 @@ function loadMessages() {
 
       messageEl.innerHTML = `
         <div class="message-container-flex">
-          <div class="message-avatar">${avatar}</div>
+          <div class="message-avatar-wrapper">
+            <div class="message-avatar">${avatar}</div>
+            <div class="user-online-dot" id="online-${msg.userId}" style="display: none;"></div>
+          </div>
           <div class="message-content-wrapper">
             <div class="message-header">
               <span class="${authorClass}">${userData?.username || 'Unknown'}</span>
@@ -830,16 +833,17 @@ function loadMessages() {
               <span class="message-time">${formatTime(msg.timestamp)} ${isEdited}</span>
             </div>
             ${replySection}
-            <div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>
+            ${msg.text ? `<div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>` : ''}
+            ${msg.files && msg.files.length > 0 ? createFilesDisplay(msg.files, messageId) : ''}
             <div class="message-actions">
               <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
                 <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
               </button>
-              <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
+              <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text || '')}', '${escapeHtml(userData?.username || 'Unknown')}')">
                 Reply
               </button>
               ${isOwnMessage ? `
-                <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
+                <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text || '')}')">
                   Edit
                 </button>
                 <button class="btn-action btn-delete" onclick="deleteMessage('${messageId}')">
@@ -855,6 +859,14 @@ function loadMessages() {
           </div>
         </div>
       `;
+
+      // Re-attach online status listener
+      database.ref(`status/${msg.userId}/online`).on('value', (statusSnapshot) => {
+        const onlineDot = document.getElementById(`online-${msg.userId}`);
+        if (onlineDot) {
+          onlineDot.style.display = statusSnapshot.val() ? 'block' : 'none';
+        }
+      });
     }
   });
 }
