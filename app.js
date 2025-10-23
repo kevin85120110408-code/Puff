@@ -1,3 +1,5 @@
+console.log('🔥🔥🔥 APP.JS LOADED - VERSION 3.1 🔥🔥🔥');
+
 // Global state
 let currentUser = null;
 let isAdmin = false;
