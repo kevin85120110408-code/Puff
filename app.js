@@ -700,7 +700,7 @@ function loadMessages() {
           </div>
           ${replySection}
           ${msg.text ? `<div class="message-text" data-message-id="${messageId}">${processMessageText(msg.text)}</div>` : ''}
-          ${msg.files ? createFilesDisplay(msg.files, messageId) : ''}
+          ${msg.files && msg.files.length > 0 ? createFilesDisplay(msg.files, messageId) : ''}
           <div class="message-actions">
             <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
               <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
@@ -2104,15 +2104,25 @@ async function compressImage(file) {
 
 // Create files display (folder or individual files)
 function createFilesDisplay(files, messageId) {
+  console.log('createFilesDisplay called:', { files, messageId, isArray: Array.isArray(files) });
+
   if (!files || files.length === 0) return '';
 
-  // Check if files are from a folder (have webkitRelativePath or similar structure)
-  const isFolder = files.length > 1 && files[0].name && files[0].name.includes('/');
+  // Ensure files is an array
+  const filesArray = Array.isArray(files) ? files : [files];
+  if (filesArray.length === 0) return '';
+
+  console.log('Files array:', filesArray);
+
+  // Check if files are from a folder (have path separator in name)
+  const hasPath = filesArray.some(f => f && f.name && (f.name.includes('/') || f.name.includes('\\')));
+  const isFolder = filesArray.length > 1 && hasPath;
 
   if (isFolder) {
     // Display as folder
-    const folderName = files[0].name.split('/')[0] || 'Folder';
-    const totalSize = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    const firstFile = filesArray[0];
+    const folderName = firstFile.name.split(/[/\\]/)[0] || 'Folder';
+    const totalSize = filesArray.reduce((sum, f) => sum + (f.size || 0), 0);
 
     return `
       <div class="message-folder" onclick="toggleFolder('${messageId}', event)">
@@ -2123,34 +2133,44 @@ function createFilesDisplay(files, messageId) {
         </div>
         <div class="message-folder-info">
           <div class="message-folder-name">${escapeHtml(folderName)}</div>
-          <div class="message-folder-meta">${files.length} files • ${formatFileSize(totalSize)}</div>
+          <div class="message-folder-meta">${filesArray.length} files • ${formatFileSize(totalSize)}</div>
         </div>
         <div class="message-folder-toggle">▼</div>
       </div>
       <div class="message-folder-contents" id="folder-${messageId}" style="display: none;">
-        ${files.map(file => createFileAttachment(file)).join('')}
+        ${filesArray.map(file => createFileAttachment(file)).join('')}
       </div>
     `;
   } else {
     // Display individual files
-    return files.map(file => createFileAttachment(file)).join('');
+    return filesArray.map(file => createFileAttachment(file)).join('');
   }
 }
 
 // Create file attachment HTML
 function createFileAttachment(file) {
+  if (!file || !file.name || !file.data) {
+    console.error('Invalid file object:', file);
+    return '';
+  }
+
   const isImage = isImageFile(file.name);
   const ext = getFileExtension(file.name);
   const iconColor = getFileIconColor(ext);
 
   // Get display name (remove folder path if exists)
-  const displayName = file.name.includes('/') ? file.name.split('/').pop() : file.name;
+  let displayName = file.name;
+  if (displayName.includes('/')) {
+    displayName = displayName.split('/').pop();
+  } else if (displayName.includes('\\')) {
+    displayName = displayName.split('\\').pop();
+  }
 
   if (isImage) {
     // Display image
     return `
       <div class="message-file-attachment">
-        <img src="${file.data}" alt="${escapeHtml(displayName)}" class="message-image" onclick="openImageModal('${file.data}', '${escapeHtml(displayName)}')">
+        <img src="${file.data}" alt="${escapeHtml(displayName)}" class="message-image" onclick="openImageModal('${escapeDataUrl(file.data)}', '${escapeHtml(displayName)}')">
       </div>
     `;
   } else {
@@ -2160,7 +2180,7 @@ function createFileAttachment(file) {
         <div class="message-file-icon" style="background: ${iconColor};">${ext || 'FILE'}</div>
         <div class="message-file-info">
           <div class="message-file-name">${escapeHtml(displayName)}</div>
-          <div class="message-file-size">${formatFileSize(file.size)}</div>
+          <div class="message-file-size">${formatFileSize(file.size || 0)}</div>
         </div>
         <button class="message-file-download" onclick="downloadFile('${escapeDataUrl(file.data)}', '${escapeHtml(displayName)}')">Download</button>
       </div>
