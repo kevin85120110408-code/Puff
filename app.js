@@ -57,6 +57,9 @@ const appVersionInput = document.getElementById('appVersionInput');
 const updateVersionBtn = document.getElementById('updateVersionBtn');
 const currentVersionDisplay = document.getElementById('currentVersionDisplay');
 
+// Version display element
+const versionDisplay = document.getElementById('versionDisplay');
+
 // Helper Functions
 function showPage(page) {
   document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active'));
@@ -70,6 +73,18 @@ function showError(message) {
 function showSuccess(message) {
   alert(message);
 }
+
+// Update version display on page
+function updateVersionDisplay() {
+  const currentVersion = localStorage.getItem('app_version');
+  if (currentVersion && versionDisplay) {
+    versionDisplay.textContent = `v${currentVersion}`;
+    console.log('📦 Updated version display to:', currentVersion);
+  }
+}
+
+// Update version display on page load
+updateVersionDisplay();
 
 // Auth State Observer
 let userStatusListener = null;
@@ -3164,6 +3179,7 @@ function startVersionCheck() {
         console.log('🔄 No local version found, syncing from server:', serverVersion);
         localStorage.setItem('app_version', serverVersion);
         currentVersion = serverVersion;
+        updateVersionDisplay(); // Update display
         return;
       }
 
@@ -3181,6 +3197,7 @@ function startVersionCheck() {
         // Versions match, hide notification if showing
         console.log('✅ Versions match, no update needed');
         hideUpdateNotification();
+        updateVersionDisplay(); // Update display to match
       }
     }
   }, (error) => {
@@ -3230,11 +3247,14 @@ if (updateNowBtn) {
     localStorage.setItem('app_version', newVersionAvailable);
     console.log('✅ Updated local version to:', newVersionAvailable);
 
+    // Update version display immediately
+    updateVersionDisplay();
+
     // Show loading message
     updateNotification.innerHTML = `
       <div class="update-icon">⏳</div>
       <div class="update-content">
-        <div class="update-title">Updating...</div>
+        <div class="update-title">Updating to v${newVersionAvailable}...</div>
         <div class="update-message">Please wait while we update the app</div>
       </div>
     `;
