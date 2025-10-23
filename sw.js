@@ -1,5 +1,5 @@
 // 🔥 重要: 每次部署新版本时,请更新这个版本号!
-const CACHE_VERSION = 'v4.1';
+const CACHE_VERSION = 'v5.0';
 const CACHE_NAME = `forum-chat-${CACHE_VERSION}`;
 
 // 需要缓存的静态资源
