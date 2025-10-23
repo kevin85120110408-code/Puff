@@ -613,30 +613,91 @@ initializeAdmin();
 
 <!-- PWA Service Worker Registration -->
 <script>
-// Register Service Worker
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('✅ Service Worker registered:', registration.scope);
+// 当前版本号
+const CURRENT_VERSION = '5.0';
 
-        // Check for updates
-        registration.addEventListener('updatefound', () => {
-          const newWorker = registration.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New service worker available
-              if (confirm('New version available! Reload to update?')) {
-                window.location.reload();
-              }
-            }
-          });
-        });
-      })
-      .catch((error) => {
-        console.log('❌ Service Worker registration failed:', error);
+// 检查版本并强制更新
+function checkVersion() {
+  const lastVersion = localStorage.getItem('app_version');
+  console.log('📦 Current version:', CURRENT_VERSION);
+  console.log('💾 Cached version:', lastVersion);
+
+  if (lastVersion && lastVersion !== CURRENT_VERSION) {
+    console.log('🔄 Version changed! Clearing cache...');
+
+    // 清除所有缓存
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        for (let name of names) {
+          console.log('🗑️ Deleting cache:', name);
+          caches.delete(name);
+        }
       });
-  });
+    }
+
+    // 注销所有 Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          console.log('🗑️ Unregistering Service Worker');
+          registration.unregister();
+        }
+      });
+    }
+
+    // 更新版本号
+    localStorage.setItem('app_version', CURRENT_VERSION);
+
+    // 强制刷新页面
+    console.log('🔄 Reloading page...');
+    setTimeout(() => {
+      window.location.reload(true);
+    }, 500);
+
+    return false;
+  }
+
+  // 保存当前版本
+  localStorage.setItem('app_version', CURRENT_VERSION);
+  return true;
+}
+
+// 先检查版本
+if (!checkVersion()) {
+  // 如果版本不匹配,会自动刷新,不继续执行
+} else {
+  // 版本匹配,正常注册 Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('✅ Service Worker registered:', registration.scope);
+
+          // 每隔 60 秒检查一次更新
+          setInterval(() => {
+            registration.update();
+          }, 60000);
+
+          // Check for updates
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // New service worker available
+                console.log('🆕 New Service Worker available!');
+                if (confirm('New version available! Reload to update?')) {
+                  newWorker.postMessage({ action: 'skipWaiting' });
+                  window.location.reload();
+                }
+              }
+            });
+          });
+        })
+        .catch((error) => {
+          console.log('❌ Service Worker registration failed:', error);
+        });
+    });
+  }
 }
 
 // Install prompt removed - Install App button disabled

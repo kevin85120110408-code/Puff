@@ -1,5 +1,5 @@
 // 🔥 重要: 每次部署新版本时,请更新这个版本号!
-const CACHE_VERSION = 'v5.0';
+const CACHE_VERSION = 'v4.1';
 const CACHE_NAME = `forum-chat-${CACHE_VERSION}`;
 
 // 需要缓存的静态资源
@@ -21,10 +21,17 @@ self.addEventListener('install', (event) => {
         return cache.addAll(urlsToCache);
       })
       .then(() => {
-        console.log('Service Worker: Skip waiting');
+        console.log('Service Worker: Skip waiting - Force activate new version');
         return self.skipWaiting();
       })
   );
+});
+
+// Listen for skip waiting message
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
 });
 
 // Activate event - clean up old caches
