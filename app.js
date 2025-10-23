@@ -222,22 +222,29 @@ showLoginLink.addEventListener('click', (e) => {
 loginBtn.addEventListener('click', async () => {
   const email = loginEmail.value.trim();
   const password = loginPassword.value;
-  
+
   if (!email || !password) {
     showError('Please fill in all fields');
     return;
   }
-  
+
+  // Disable button to prevent double-click
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Signing in...';
+
   try {
     await auth.signInWithEmailAndPassword(email, password);
-    
+
     if (rememberMe.checked) {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     }
-    
+
     showSuccess('Login successful!');
   } catch (error) {
     showError(error.message);
+    // Re-enable button on error
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Sign In';
   }
 });
 
@@ -245,21 +252,25 @@ registerBtn.addEventListener('click', async () => {
   const username = registerUsername.value.trim();
   const email = registerEmail.value.trim();
   const password = registerPassword.value;
-  
+
   if (!username || !email || !password) {
     showError('Please fill in all fields');
     return;
   }
-  
+
   if (password.length < 6) {
     showError('Password must be at least 6 characters');
     return;
   }
-  
+
+  // Disable button to prevent double-click
+  registerBtn.disabled = true;
+  registerBtn.textContent = 'Creating...';
+
   try {
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
-    
+
     // Save user data
     await database.ref(`users/${user.uid}`).set({
       username: username,
@@ -267,12 +278,16 @@ registerBtn.addEventListener('click', async () => {
       role: 'user',
       createdAt: Date.now(),
       banned: false,
-      muted: false
+      muted: false,
+      messageCount: 0
     });
-    
+
     showSuccess('Account created successfully!');
   } catch (error) {
     showError(error.message);
+    // Re-enable button on error
+    registerBtn.disabled = false;
+    registerBtn.textContent = 'Create Account';
   }
 });
 
@@ -2037,32 +2052,7 @@ async function sendWelcomeMessage(username) {
   }
 }
 
-// Update register function to set createdAt timestamp
-const originalRegister = registerBtn.onclick;
-registerBtn.onclick = async function() {
-  const username = registerUsername.value.trim();
-  const email = registerEmail.value.trim();
-  const password = registerPassword.value.trim();
-
-  if (!username || !email || !password) {
-    showError('Please fill in all fields');
-    return;
-  }
-
-  try {
-    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-    await database.ref(`users/${userCredential.user.uid}`).set({
-      username: username,
-      email: email,
-      role: 'user',
-      createdAt: Date.now(),
-      messageCount: 0
-    });
-    showSuccess('Registration successful!');
-  } catch (error) {
-    showError(error.message);
-  }
-};
+// Duplicate register handler removed - using addEventListener above (line 244)
 
 // ============================================
 // ANNOUNCEMENT MANAGEMENT (Admin)
