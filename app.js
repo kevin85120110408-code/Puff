@@ -1790,6 +1790,8 @@ function loadPrivateMessages(chatId) {
   const container = document.getElementById('pmMessages');
   if (!container) return;
 
+  let isInitialLoad = true;
+
   database.ref(`privateMessages/${chatId}`).on('child_added', async (snapshot) => {
     const msg = snapshot.val();
     const isOwn = msg.from === currentUser.uid;
@@ -1812,7 +1814,23 @@ function loadPrivateMessages(chatId) {
 
     container.appendChild(msgEl);
     container.scrollTop = container.scrollHeight;
+
+    // Mark as read if not own message
+    if (!isOwn && msg.read === false) {
+      database.ref(`privateMessages/${chatId}/${snapshot.key}/read`).set(true);
+    }
+
+    // Show notification for new messages (not during initial load)
+    if (!isInitialLoad && !isOwn) {
+      showToast(`💬 New message from ${userData?.username || 'Unknown'}`);
+      playNotificationSound();
+    }
   });
+
+  // After a short delay, mark initial load as complete
+  setTimeout(() => {
+    isInitialLoad = false;
+  }, 1000);
 }
 
 // ============================================
