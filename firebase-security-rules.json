@@ -1,0 +1,114 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    
+    "users": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['username', 'email', 'role', 'createdAt'])"
+      }
+    },
+    
+    "messages": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp", "pinned"],
+      "$messageId": {
+        ".write": "auth != null && (
+          !data.exists() || 
+          data.child('userId').val() === auth.uid || 
+          root.child('users').child(auth.uid).child('role').val() === 'admin'
+        )",
+        ".validate": "newData.hasChildren(['userId', 'text', 'timestamp'])"
+      }
+    },
+    
+    "announcements": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp"],
+      "$announcementId": {
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        ".validate": "newData.hasChildren(['title', 'content', 'timestamp', 'authorId'])"
+      }
+    },
+    
+    "privateMessages": {
+      "$chatId": {
+        ".read": "auth != null && (
+          $chatId.contains(auth.uid)
+        )",
+        ".write": "auth != null && (
+          $chatId.contains(auth.uid)
+        )",
+        "$messageId": {
+          ".validate": "newData.hasChildren(['from', 'to', 'text', 'timestamp'])"
+        }
+      }
+    },
+    
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    },
+    
+    "reactions": {
+      ".read": "auth != null",
+      "$messageId": {
+        ".write": "auth != null"
+      }
+    },
+    
+    "bookmarks": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    
+    "following": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    
+    "followers": {
+      "$uid": {
+        ".read": "auth != null"
+      }
+    },
+    
+    "status": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    
+    "reports": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null"
+    },
+    
+    "adminLogs": {
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    
+    "appVersion": {
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    
+    "typing": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
+

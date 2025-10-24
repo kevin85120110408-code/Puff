@@ -280,6 +280,12 @@ auth.onAuthStateChanged(async (user) => {
       adminPanelBtn.style.display = 'block';
     }
 
+    // Initialize new features
+    initEmojiPicker();
+    listenToNotifications();
+    updateUserStatus(USER_STATUS.ONLINE);
+    initMessagesInbox();
+
     // Real-time listener for user status changes
     let isFirstLoad = true;
     userStatusListener = userRef.on('value', async (snapshot) => {
@@ -700,7 +706,7 @@ function loadMessages() {
         </div>
         <div class="message-content-wrapper">
           <div class="message-header">
-            <span class="${authorClass}">${userData?.username || 'Unknown'}</span>
+            <span class="${authorClass} clickable-username" onclick="showUserProfile('${msg.userId}')" title="View profile">${userData?.username || 'Unknown'}</span>
             <span class="user-level-badge level-${userLevel.level}">${userLevel.name}</span>
             <span class="message-time">${formatTime(msg.timestamp)} ${isEdited}</span>
           </div>
@@ -711,9 +717,20 @@ function loadMessages() {
             <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
               <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
             </button>
+            <button class="btn-action btn-react" onclick="showReactionPicker('${messageId}', event)">
+              😊 React
+            </button>
             <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
               Reply
             </button>
+            <button class="btn-action btn-bookmark" onclick="toggleBookmark('${messageId}')">
+              🔖 Save
+            </button>
+            ${!isOwnMessage && !isAdmin ? `
+              <button class="btn-action btn-report" onclick="reportMessage('${messageId}', '${escapeHtml(msg.text)}', '${msg.userId}')">
+                🚨 Report
+              </button>
+            ` : ''}
             ${isOwnMessage ? `
               <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
                 Edit
@@ -722,7 +739,10 @@ function loadMessages() {
                 Delete
               </button>
             ` : ''}
-            ${isAdmin ? `
+            ${isAdmin && !isOwnMessage ? `
+              <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
+                Edit
+              </button>
               <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
                 Delete
               </button>
@@ -770,6 +790,9 @@ function loadMessages() {
       updateReadStatus(messageId, readSnapshot.val(), msg.userId);
     });
 
+    // Listen for reactions (real-time)
+    listenToReactions(messageId);
+
     // Listen for user online status
     database.ref(`status/${msg.userId}/online`).on('value', (statusSnapshot) => {
       const onlineDot = document.getElementById(`online-${msg.userId}`);
@@ -801,6 +824,7 @@ function loadMessages() {
       const isAdminMsg = userData?.role === 'admin';
       const authorClass = isAdminMsg ? 'message-author admin' : 'message-author';
       const isOwnMessage = msg.userId === currentUser.uid;
+      const isAdmin = currentUser?.role === 'admin';
       const likes = msg.likes || {};
       const likeCount = Object.keys(likes).length;
       const hasLiked = likes[currentUser.uid];
@@ -819,6 +843,11 @@ function loadMessages() {
 
       const avatar = getAvatar(userData?.username || 'Unknown', userData, msg.userId);
       const userLevel = getUserLevel(userData?.messageCount || 0);
+
+      // Save the reactions container before updating innerHTML
+      const contentWrapper = messageEl.querySelector('.message-content-wrapper');
+      const existingReactions = contentWrapper ? contentWrapper.querySelector('.message-reactions') : null;
+      const reactionsHTML = existingReactions ? existingReactions.outerHTML : '';
 
       messageEl.innerHTML = `
         <div class="message-container-flex">
@@ -839,9 +868,20 @@ function loadMessages() {
               <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
                 <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
               </button>
+              <button class="btn-action btn-react" onclick="showReactionPicker('${messageId}', event)">
+                😊 React
+              </button>
               <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text || '')}', '${escapeHtml(userData?.username || 'Unknown')}')">
                 Reply
               </button>
+              <button class="btn-action btn-bookmark" onclick="toggleBookmark('${messageId}')">
+                🔖 Save
+              </button>
+              ${!isOwnMessage && !isAdmin ? `
+                <button class="btn-action btn-report" onclick="reportMessage('${messageId}', '${escapeHtml(msg.text || '')}', '${msg.userId}')">
+                  🚨 Report
+                </button>
+              ` : ''}
               ${isOwnMessage ? `
                 <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text || '')}')">
                   Edit
@@ -850,7 +890,10 @@ function loadMessages() {
                   Delete
                 </button>
               ` : ''}
-              ${isAdmin ? `
+              ${isAdmin && !isOwnMessage ? `
+                <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text || '')}')">
+                  Edit
+                </button>
                 <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
                   Delete
                 </button>
@@ -859,6 +902,15 @@ function loadMessages() {
           </div>
         </div>
       `;
+
+      // Restore reactions container if it existed
+      if (reactionsHTML) {
+        const newContentWrapper = messageEl.querySelector('.message-content-wrapper');
+        const actionsEl = newContentWrapper.querySelector('.message-actions');
+        if (actionsEl && newContentWrapper) {
+          actionsEl.insertAdjacentHTML('beforebegin', reactionsHTML);
+        }
+      }
 
       // Re-attach online status listener
       database.ref(`status/${msg.userId}/online`).on('value', (statusSnapshot) => {
@@ -1126,6 +1178,10 @@ function switchAdminTab(tabName) {
     case 'announcements':
       loadAnnouncementsManager();
       break;
+    case 'permissions':
+      loadAdminsList();
+      loadRoleStats();
+      break;
     case 'logs':
       loadAdminLogs();
       break;
@@ -1166,6 +1222,962 @@ document.addEventListener('click', (e) => {
     }
   }
 });
+
+// ============================================
+// MESSAGE REACTIONS SYSTEM (REAL-TIME)
+// ============================================
+
+const reactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
+
+// Add reaction to message
+window.addReaction = async function(messageId, emoji) {
+  if (!currentUser) {
+    showError('Please login to react to messages');
+    return;
+  }
+
+  try {
+    const reactionRef = database.ref(`reactions/${messageId}/${currentUser.uid}`);
+    const snapshot = await reactionRef.once('value');
+
+    if (snapshot.exists() && snapshot.val() === emoji) {
+      // Remove reaction if clicking same emoji
+      await reactionRef.remove();
+      showSuccess('Reaction removed');
+    } else {
+      // Add or update reaction
+      await reactionRef.set(emoji);
+      showSuccess(`Reacted with ${emoji}`);
+    }
+  } catch (error) {
+    console.error('Reaction error:', error);
+    showError('Failed to add reaction');
+  }
+};
+
+// Listen to reactions in real-time
+function listenToReactions(messageId) {
+  database.ref(`reactions/${messageId}`).on('value', (snapshot) => {
+    updateReactionDisplay(messageId, snapshot.val());
+  });
+}
+
+// Update reaction display
+function updateReactionDisplay(messageId, reactions) {
+  // Find the .message element which has data-message-id attribute
+  const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+
+  if (!messageEl) {
+    return;
+  }
+
+  // Find the message-content-wrapper inside the message element
+  const contentWrapper = messageEl.querySelector('.message-content-wrapper');
+
+  if (!contentWrapper) {
+    return;
+  }
+
+  let reactionsContainer = contentWrapper.querySelector('.message-reactions');
+
+  if (!reactions || Object.keys(reactions).length === 0) {
+    if (reactionsContainer) {
+      reactionsContainer.remove();
+    }
+    return;
+  }
+
+  if (!reactionsContainer) {
+    reactionsContainer = document.createElement('div');
+    reactionsContainer.className = 'message-reactions';
+    const actionsEl = contentWrapper.querySelector('.message-actions');
+    if (actionsEl) {
+      // Insert before the actions
+      actionsEl.parentNode.insertBefore(reactionsContainer, actionsEl);
+    } else {
+      // Fallback: append to content wrapper
+      contentWrapper.appendChild(reactionsContainer);
+    }
+  }
+
+  // Count reactions
+  const reactionCounts = {};
+  const userReactions = {};
+
+  Object.entries(reactions).forEach(([userId, emoji]) => {
+    reactionCounts[emoji] = (reactionCounts[emoji] || 0) + 1;
+    if (!userReactions[emoji]) userReactions[emoji] = [];
+    userReactions[emoji].push(userId);
+  });
+
+  // Display reactions
+  reactionsContainer.innerHTML = Object.entries(reactionCounts)
+    .map(([emoji, count]) => {
+      const hasReacted = userReactions[emoji].includes(currentUser?.uid);
+      return `
+        <button class="reaction-btn ${hasReacted ? 'reacted' : ''}"
+                onclick="addReaction('${messageId}', '${emoji}')"
+                title="${count} reaction${count > 1 ? 's' : ''}">
+          ${emoji} <span class="reaction-count">${count}</span>
+        </button>
+      `;
+    }).join('');
+}
+
+// Show reaction picker
+window.showReactionPicker = function(messageId, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+
+  // Remove existing picker
+  const existingPicker = document.querySelector('.reaction-picker');
+  if (existingPicker) existingPicker.remove();
+
+  const picker = document.createElement('div');
+  picker.className = 'reaction-picker';
+  picker.innerHTML = reactionEmojis.map(emoji =>
+    `<button class="reaction-emoji" onclick="event.stopPropagation(); addReaction('${messageId}', '${emoji}'); this.parentElement.remove();">${emoji}</button>`
+  ).join('');
+
+  const button = event ? event.target.closest('.btn-react') : null;
+  if (button) {
+    button.appendChild(picker);
+
+    // Close picker when clicking outside
+    setTimeout(() => {
+      document.addEventListener('click', function closePicker(e) {
+        if (!picker.contains(e.target) && !button.contains(e.target)) {
+          picker.remove();
+          document.removeEventListener('click', closePicker);
+        }
+      });
+    }, 0);
+  }
+};
+
+// ============================================
+// BOOKMARK SYSTEM (REAL-TIME)
+// ============================================
+
+window.toggleBookmark = async function(messageId) {
+  if (!currentUser) {
+    showError('Please login to bookmark messages');
+    return;
+  }
+
+  try {
+    const bookmarkRef = database.ref(`bookmarks/${currentUser.uid}/${messageId}`);
+    const snapshot = await bookmarkRef.once('value');
+
+    if (snapshot.exists()) {
+      await bookmarkRef.remove();
+      showSuccess('Bookmark removed');
+    } else {
+      await bookmarkRef.set({
+        timestamp: Date.now(),
+        messageId: messageId
+      });
+      showSuccess('Message bookmarked!');
+    }
+  } catch (error) {
+    console.error('Bookmark error:', error);
+    showError('Failed to bookmark message');
+  }
+};
+
+// ============================================
+// USER STATUS SYSTEM (REAL-TIME)
+// ============================================
+
+const USER_STATUS = {
+  ONLINE: 'online',
+  OFFLINE: 'offline',
+  BUSY: 'busy',
+  AWAY: 'away'
+};
+
+// Update user status
+function updateUserStatus(status) {
+  if (!currentUser) return;
+
+  database.ref(`userStatus/${currentUser.uid}`).set({
+    status: status,
+    lastSeen: Date.now()
+  });
+}
+
+// Auto-detect user activity
+let activityTimeout;
+function resetActivityTimer() {
+  clearTimeout(activityTimeout);
+  updateUserStatus(USER_STATUS.ONLINE);
+
+  activityTimeout = setTimeout(() => {
+    updateUserStatus(USER_STATUS.AWAY);
+  }, 5 * 60 * 1000); // 5 minutes
+}
+
+// Listen to user activity
+['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
+  document.addEventListener(event, resetActivityTimer, true);
+});
+
+// Set offline when leaving
+window.addEventListener('beforeunload', () => {
+  if (currentUser) {
+    updateUserStatus(USER_STATUS.OFFLINE);
+  }
+});
+
+// ============================================
+// DAILY CHECK-IN SYSTEM
+// ============================================
+
+window.dailyCheckIn = async function() {
+  if (!currentUser) return;
+
+  try {
+    const today = new Date().toDateString();
+    const checkInRef = database.ref(`checkIns/${currentUser.uid}`);
+    const snapshot = await checkInRef.once('value');
+    const data = snapshot.val() || {};
+
+    if (data.lastCheckIn === today) {
+      showError('You have already checked in today!');
+      return;
+    }
+
+    const consecutiveDays = data.lastCheckIn === new Date(Date.now() - 86400000).toDateString()
+      ? (data.consecutiveDays || 0) + 1
+      : 1;
+
+    const points = consecutiveDays >= 7 ? 20 : 10; // Bonus for 7+ days
+
+    await checkInRef.set({
+      lastCheckIn: today,
+      consecutiveDays: consecutiveDays,
+      totalDays: (data.totalDays || 0) + 1
+    });
+
+    // Add points
+    const userRef = database.ref(`users/${currentUser.uid}`);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+    await userRef.update({
+      points: (userData.points || 0) + points
+    });
+
+    showSuccess(`Check-in successful! +${points} points (${consecutiveDays} days streak)`);
+  } catch (error) {
+    console.error('Check-in error:', error);
+    showError('Check-in failed');
+  }
+};
+
+// ============================================
+// DARK MODE
+// ============================================
+
+let darkMode = localStorage.getItem('darkMode') === 'true';
+
+window.toggleDarkMode = function() {
+  darkMode = !darkMode;
+  localStorage.setItem('darkMode', darkMode);
+  document.body.classList.toggle('dark-mode', darkMode);
+
+  const icon = document.getElementById('darkModeIcon');
+  if (icon) {
+    icon.textContent = darkMode ? '☀️' : '🌙';
+  }
+};
+
+// Apply dark mode on load
+if (darkMode) {
+  document.body.classList.add('dark-mode');
+}
+
+// ============================================
+// USER PROFILE SYSTEM
+// ============================================
+
+window.showUserProfile = async function(userId) {
+  if (!userId) return;
+
+  try {
+    // Show loading indicator
+    const loadingModal = document.createElement('div');
+    loadingModal.className = 'modal active';
+    loadingModal.innerHTML = `
+      <div class="modal-content" style="text-align: center; padding: 40px;">
+        <div class="loading-spinner"></div>
+        <p style="margin-top: 20px;">Loading profile...</p>
+      </div>
+    `;
+    document.body.appendChild(loadingModal);
+
+    // Parallel queries for better performance
+    const [userSnapshot, messagesSnapshot, followersSnapshot, followingSnapshot, checkInSnapshot] = await Promise.all([
+      database.ref(`users/${userId}`).once('value'),
+      database.ref('messages').orderByChild('userId').equalTo(userId).limitToLast(100).once('value'), // Limit to last 100 messages
+      database.ref(`followers/${userId}`).once('value'),
+      database.ref(`following/${userId}`).once('value'),
+      database.ref(`checkIns/${userId}`).once('value')
+    ]);
+
+    const userData = userSnapshot.val();
+
+    if (!userData) {
+      loadingModal.remove();
+      showError('User not found');
+      return;
+    }
+
+    // Get user stats
+    const messageCount = messagesSnapshot.numChildren();
+
+    // Get total likes received
+    let totalLikes = 0;
+    messagesSnapshot.forEach(msgSnap => {
+      const likes = msgSnap.val().likes || {};
+      totalLikes += Object.keys(likes).length;
+    });
+
+    // Get followers/following count
+    const followersCount = followersSnapshot.numChildren();
+    const followingCount = followingSnapshot.numChildren();
+
+    // Check if current user is following
+    let isFollowing = false;
+    if (currentUser && currentUser.uid !== userId) {
+      const followSnapshot = await database.ref(`following/${currentUser.uid}/${userId}`).once('value');
+      isFollowing = followSnapshot.exists();
+    }
+
+    // Get check-in data (already fetched in parallel query)
+    const checkInData = checkInSnapshot.val() || {};
+
+    // Get user level based on message count
+    const userLevel = getUserLevel(messageCount);
+
+    // Generate avatar HTML
+    const username = userData.username || 'Unknown';
+    const initials = username.substring(0, 2).toUpperCase();
+    let avatarHTML = '';
+
+    if (userData?.avatarUrl) {
+      avatarHTML = `<img src="${userData.avatarUrl}" alt="${username}" class="profile-avatar">`;
+    } else {
+      // Generate color-based avatar
+      const colors = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+        '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+      ];
+      const colorIndex = username.charCodeAt(0) % colors.length;
+      const color = userData?.avatarColor || colors[colorIndex];
+      avatarHTML = `<div class="profile-avatar" style="background: ${color}; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: bold; color: white;">${initials}</div>`;
+    }
+
+    // Remove loading modal
+    loadingModal.remove();
+
+    // Show profile modal
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.id = 'userProfileModal';
+    modal.innerHTML = `
+      <div class="modal-content user-profile-modal">
+        <div class="modal-header">
+          <h3>User Profile</h3>
+          <button class="modal-close" onclick="this.closest('.modal').remove()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="profile-header">
+            ${avatarHTML}
+            <div class="profile-info">
+              <h2>${escapeHtml(username)}</h2>
+              <span class="user-level-badge level-${userLevel.level}">${userLevel.name}</span>
+              <p class="profile-bio">${escapeHtml(userData.bio || 'No bio yet')}</p>
+            </div>
+          </div>
+
+          <div class="profile-stats">
+            <div class="stat-item">
+              <div class="stat-value">${messageCount}</div>
+              <div class="stat-label">Messages</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${totalLikes}</div>
+              <div class="stat-label">Likes</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${followersCount}</div>
+              <div class="stat-label">Followers</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${followingCount}</div>
+              <div class="stat-label">Following</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${userData.points || 0}</div>
+              <div class="stat-label">Points</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${checkInData.consecutiveDays || 0}</div>
+              <div class="stat-label">Streak</div>
+            </div>
+          </div>
+
+          ${currentUser && currentUser.uid !== userId ? `
+            <div class="profile-actions">
+              <button class="btn-primary" onclick="toggleFollow('${userId}')">
+                ${isFollowing ? 'Following' : 'Follow'}
+              </button>
+              <button class="btn-secondary" onclick="openPrivateMessage('${userId}', '${escapeHtml(userData.username)}')">
+                Message
+              </button>
+            </div>
+          ` : ''}
+
+          ${currentUser && currentUser.uid === userId ? `
+            <div class="profile-actions">
+              <button class="btn-primary" onclick="editProfile()">
+                Edit Profile
+              </button>
+              <button class="btn-secondary" onclick="showBookmarks()">
+                Bookmarks
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  } catch (error) {
+    console.error('Profile error:', error);
+    // Remove loading modal if it exists
+    const loadingModal = document.querySelector('.modal');
+    if (loadingModal) {
+      loadingModal.remove();
+    }
+    showError('Failed to load profile');
+  }
+};
+
+// ============================================
+// FOLLOW SYSTEM (REAL-TIME)
+// ============================================
+
+window.toggleFollow = async function(userId) {
+  if (!currentUser) {
+    showError('Please login to follow users');
+    return;
+  }
+
+  try {
+    const followingRef = database.ref(`following/${currentUser.uid}/${userId}`);
+    const followerRef = database.ref(`followers/${userId}/${currentUser.uid}`);
+
+    const snapshot = await followingRef.once('value');
+
+    if (snapshot.exists()) {
+      // Unfollow
+      await followingRef.remove();
+      await followerRef.remove();
+      showSuccess('Unfollowed');
+    } else {
+      // Follow
+      await followingRef.set(true);
+      await followerRef.set(true);
+      showSuccess('Following!');
+
+      // Send notification
+      await database.ref(`notifications/${userId}`).push({
+        type: 'follow',
+        from: currentUser.uid,
+        timestamp: Date.now(),
+        read: false
+      });
+    }
+
+    // Refresh profile
+    document.getElementById('userProfileModal')?.remove();
+    showUserProfile(userId);
+  } catch (error) {
+    console.error('Follow error:', error);
+    showError('Failed to follow user');
+  }
+};
+
+// ============================================
+// PRIVATE MESSAGE SYSTEM (REAL-TIME)
+// ============================================
+
+window.openPrivateMessage = function(userId, username) {
+  if (!currentUser) {
+    showError('Please login to send messages');
+    return;
+  }
+
+  // Create chat ID (sorted to ensure consistency)
+  const chatId = [currentUser.uid, userId].sort().join('_');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal active';
+  modal.id = 'privateMessageModal';
+  modal.innerHTML = `
+    <div class="modal-content pm-modal">
+      <div class="modal-header">
+        <h3>Chat with ${escapeHtml(username)}</h3>
+        <button class="modal-close" onclick="this.closest('.modal').remove()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="pm-messages" id="pmMessages"></div>
+        <div class="pm-input-container">
+          <input type="text" id="pmInput" placeholder="Type a message..." class="pm-input">
+          <button onclick="sendPrivateMessage('${chatId}', '${userId}')" class="btn-primary">Send</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Load messages
+  loadPrivateMessages(chatId);
+
+  // Enter to send
+  document.getElementById('pmInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      sendPrivateMessage(chatId, userId);
+    }
+  });
+};
+
+window.sendPrivateMessage = async function(chatId, recipientId) {
+  const input = document.getElementById('pmInput');
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  try {
+    await database.ref(`privateMessages/${chatId}`).push({
+      from: currentUser.uid,
+      to: recipientId,
+      text: text,
+      timestamp: Date.now(),
+      read: false
+    });
+
+    input.value = '';
+
+    // Send notification
+    await database.ref(`notifications/${recipientId}`).push({
+      type: 'message',
+      from: currentUser.uid,
+      timestamp: Date.now(),
+      read: false
+    });
+  } catch (error) {
+    console.error('PM error:', error);
+    showError('Failed to send message');
+  }
+};
+
+function loadPrivateMessages(chatId) {
+  const container = document.getElementById('pmMessages');
+  if (!container) return;
+
+  database.ref(`privateMessages/${chatId}`).on('child_added', async (snapshot) => {
+    const msg = snapshot.val();
+    const isOwn = msg.from === currentUser.uid;
+
+    // Get sender data
+    const userSnapshot = await database.ref(`users/${msg.from}`).once('value');
+    const userData = userSnapshot.val();
+
+    const msgEl = document.createElement('div');
+    msgEl.className = `pm-message ${isOwn ? 'pm-own' : 'pm-other'}`;
+    msgEl.innerHTML = `
+      <div class="pm-message-content">
+        <div class="pm-message-header">
+          <span class="pm-sender">${escapeHtml(userData?.username || 'Unknown')}</span>
+          <span class="pm-time">${formatTime(msg.timestamp)}</span>
+        </div>
+        <div class="pm-message-text">${escapeHtml(msg.text)}</div>
+      </div>
+    `;
+
+    container.appendChild(msgEl);
+    container.scrollTop = container.scrollHeight;
+  });
+}
+
+// ============================================
+// MESSAGES INBOX
+// ============================================
+
+function initMessagesInbox() {
+  const inboxBtn = document.getElementById('messagesInboxBtn');
+  if (!inboxBtn) return;
+
+  inboxBtn.addEventListener('click', showMessagesInbox);
+
+  // Listen for new messages and update badge
+  listenToInboxUpdates();
+}
+
+async function showMessagesInbox() {
+  if (!currentUser) {
+    showError('Please login to view messages');
+    return;
+  }
+
+  const modal = document.createElement('div');
+  modal.className = 'modal active';
+  modal.id = 'messagesInboxModal';
+  modal.innerHTML = `
+    <div class="modal-content inbox-modal">
+      <div class="modal-header">
+        <h3>💬 Messages</h3>
+        <button class="modal-close" onclick="this.closest('.modal').remove()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="inbox-list" id="inboxList">
+          <div class="loading-text">Loading conversations...</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Load conversations
+  await loadInboxConversations();
+}
+
+async function loadInboxConversations() {
+  const inboxList = document.getElementById('inboxList');
+  if (!inboxList) return;
+
+  try {
+    // Get all private messages where user is involved
+    const messagesSnapshot = await database.ref('privateMessages').once('value');
+    const allMessages = messagesSnapshot.val() || {};
+
+    // Group messages by conversation
+    const conversations = {};
+
+    for (const chatId in allMessages) {
+      const messages = allMessages[chatId];
+
+      // Check if current user is part of this conversation
+      const userIds = chatId.split('_');
+      if (!userIds.includes(currentUser.uid)) continue;
+
+      // Get the other user's ID
+      const otherUserId = userIds.find(id => id !== currentUser.uid);
+      if (!otherUserId) continue;
+
+      // Get last message
+      const messagesList = Object.values(messages);
+      const lastMessage = messagesList[messagesList.length - 1];
+
+      // Count unread messages
+      const unreadCount = messagesList.filter(msg =>
+        msg.to === currentUser.uid && !msg.read
+      ).length;
+
+      conversations[chatId] = {
+        chatId,
+        otherUserId,
+        lastMessage,
+        unreadCount,
+        timestamp: lastMessage.timestamp
+      };
+    }
+
+    // Sort by timestamp (newest first)
+    const sortedConversations = Object.values(conversations).sort((a, b) =>
+      b.timestamp - a.timestamp
+    );
+
+    if (sortedConversations.length === 0) {
+      inboxList.innerHTML = `
+        <div class="inbox-empty">
+          <div class="inbox-empty-icon">💬</div>
+          <div class="inbox-empty-text">No messages yet</div>
+        </div>
+      `;
+      return;
+    }
+
+    // Load user data for all conversations
+    const userDataPromises = sortedConversations.map(conv =>
+      database.ref(`users/${conv.otherUserId}`).once('value')
+    );
+    const userSnapshots = await Promise.all(userDataPromises);
+    const userData = userSnapshots.map(snap => snap.val());
+
+    // Render conversations
+    inboxList.innerHTML = sortedConversations.map((conv, index) => {
+      const user = userData[index];
+      const avatar = user?.avatarUrl
+        ? `<img src="${user.avatarUrl}" alt="${user.username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`
+        : generateLetterAvatar(user?.username || 'U', user?.color);
+
+      return `
+        <div class="inbox-item ${conv.unreadCount > 0 ? 'unread' : ''}"
+             onclick="openPrivateMessage('${conv.otherUserId}', '${escapeHtml(user?.username || 'Unknown')}')">
+          <div class="inbox-avatar" style="${!user?.avatarUrl ? `background: ${user?.color || '#666'};` : ''}">${avatar}</div>
+          <div class="inbox-content">
+            <div class="inbox-header">
+              <span class="inbox-username">${escapeHtml(user?.username || 'Unknown')}</span>
+              <span class="inbox-time">${formatTime(conv.timestamp)}</span>
+            </div>
+            <div class="inbox-preview">
+              ${conv.lastMessage.from === currentUser.uid ? 'You: ' : ''}${escapeHtml(conv.lastMessage.text)}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Close inbox modal when opening a conversation
+    const inboxItems = inboxList.querySelectorAll('.inbox-item');
+    inboxItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const modal = document.getElementById('messagesInboxModal');
+        if (modal) modal.remove();
+      });
+    });
+
+  } catch (error) {
+    console.error('Failed to load inbox:', error);
+    inboxList.innerHTML = `
+      <div class="inbox-empty">
+        <div class="inbox-empty-icon">⚠️</div>
+        <div class="inbox-empty-text">Failed to load messages</div>
+      </div>
+    `;
+  }
+}
+
+function listenToInboxUpdates() {
+  if (!currentUser) return;
+
+  // Listen for new messages
+  database.ref('privateMessages').on('child_added', updateInboxBadge);
+  database.ref('privateMessages').on('child_changed', updateInboxBadge);
+}
+
+async function updateInboxBadge() {
+  if (!currentUser) return;
+
+  try {
+    const messagesSnapshot = await database.ref('privateMessages').once('value');
+    const allMessages = messagesSnapshot.val() || {};
+
+    let totalUnread = 0;
+
+    for (const chatId in allMessages) {
+      const messages = allMessages[chatId];
+      const userIds = chatId.split('_');
+
+      if (!userIds.includes(currentUser.uid)) continue;
+
+      const messagesList = Object.values(messages);
+      const unreadCount = messagesList.filter(msg =>
+        msg.to === currentUser.uid && !msg.read
+      ).length;
+
+      totalUnread += unreadCount;
+    }
+
+    const badge = document.getElementById('inboxBadge');
+    if (badge) {
+      if (totalUnread > 0) {
+        badge.textContent = totalUnread > 99 ? '99+' : totalUnread;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  } catch (error) {
+    console.error('Failed to update inbox badge:', error);
+  }
+}
+
+// ============================================
+// MESSAGE REPORT SYSTEM
+// ============================================
+
+window.reportMessage = async function(messageId, messageText, authorId) {
+  if (!currentUser) {
+    showError('Please login to report messages');
+    return;
+  }
+
+  const reason = prompt('Please enter the reason for reporting this message:');
+  if (!reason) return;
+
+  try {
+    await database.ref('reports').push({
+      messageId: messageId,
+      messageText: messageText,
+      authorId: authorId,
+      reportedBy: currentUser.uid,
+      reason: reason,
+      timestamp: Date.now(),
+      status: 'pending'
+    });
+
+    showSuccess('Report submitted. Thank you!');
+  } catch (error) {
+    console.error('Report error:', error);
+    showError('Failed to submit report');
+  }
+};
+
+// ============================================
+// EMOJI PICKER
+// ============================================
+
+const emojiCategories = {
+  'Smileys': ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😶‍🌫️', '🥴', '😵', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐'],
+  'Gestures': ['👋', '🤚', '🖐', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏'],
+  'Hearts': ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❤️‍🔥', '❤️‍🩹', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟'],
+  'Animals': ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🐔', '🐧', '🐦', '🐤', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐈‍⬛', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿', '🦔'],
+  'Food': ['🍎', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🫓', '🥪', '🥙', '🧆', '🌮', '🌯', '🫔', '🥗', '🥘', '🫕', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯'],
+  'Activities': ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸', '🥌', '🎿', '⛷', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️', '🤾', '🏌️', '🏇', '🧘', '🏊', '🤽', '🚣', '🧗', '🚵', '🚴', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖', '🎗'],
+  'Travel': ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛩', '💺', '🛰', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥', '🛳', '⛴', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟', '🎡', '🎢', '🎠', '⛲', '⛱', '🏖', '🏝', '🏜', '🌋', '⛰', '🏔', '🗻', '🏕', '⛺', '🏠', '🏡', '🏘', '🏚', '🏗', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛', '⛪', '🕌', '🕍', '🛕', '🕋'],
+  'Objects': ['⌚', '📱', '📲', '💻', '⌨️', '🖥', '🖨', '🖱', '🖲', '🕹', '🗜', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽', '🎞', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙', '🎚', '🎛', '🧭', '⏱', '⏲', '⏰', '🕰', '⌛', '⏳', '📡', '🔋', '🔌', '💡', '🔦', '🕯', '🪔', '🧯', '🛢', '💸', '💵', '💴', '💶', '💷', '🪙', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒', '🛠', '⛏', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡', '⚔️', '🛡', '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪', '🌡', '🧹', '🪠', '🧺', '🧻', '🚽', '🚰', '🚿', '🛁', '🛀', '🧼', '🪥', '🪒', '🧽', '🪣', '🧴', '🛎', '🔑', '🗝', '🚪', '🪑', '🛋', '🛏', '🛌', '🧸', '🪆', '🖼', '🪞', '🪟', '🛍', '🛒', '🎁', '🎈', '🎏', '🎀', '🪄', '🪅', '🎊', '🎉', '🎎', '🏮', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌', '📥', '📤', '📦', '🏷', '🪧', '📪', '📫', '📬', '📭', '📮', '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒', '🗓', '📆', '📅', '🗑', '📇', '🗃', '🗳', '🗄', '📋', '📁', '📂', '🗂', '🗞', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇', '📐', '📏', '🧮', '📌', '📍', '✂️', '🖊', '🖋', '✒️', '🖌', '🖍', '📝', '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓']
+};
+
+let allEmojis = [];
+Object.values(emojiCategories).forEach(category => {
+  allEmojis = allEmojis.concat(category);
+});
+
+// Initialize emoji picker
+function initEmojiPicker() {
+  const emojiPickerBtn = document.getElementById('emojiPickerBtn');
+  const emojiPicker = document.getElementById('emojiPicker');
+  const emojiPickerBody = document.getElementById('emojiPickerBody');
+  const emojiSearch = document.getElementById('emojiSearch');
+  const messageInput = document.getElementById('messageInput');
+
+  if (!emojiPickerBtn || !emojiPicker) return;
+
+  // Render all emojis
+  function renderEmojis(emojis = allEmojis) {
+    emojiPickerBody.innerHTML = emojis.map(emoji =>
+      `<button class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</button>`
+    ).join('');
+  }
+
+  renderEmojis();
+
+  // Toggle emoji picker
+  emojiPickerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // Search emojis
+  emojiSearch.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase();
+    if (!searchTerm) {
+      renderEmojis();
+      return;
+    }
+
+    const filtered = allEmojis.filter(emoji => {
+      // Simple search - you can enhance this
+      return true; // Show all for now
+    });
+    renderEmojis(filtered);
+  });
+
+  // Close picker when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!emojiPicker.contains(e.target) && e.target !== emojiPickerBtn) {
+      emojiPicker.style.display = 'none';
+    }
+  });
+}
+
+window.insertEmoji = function(emoji) {
+  const messageInput = document.getElementById('messageInput');
+  const cursorPos = messageInput.selectionStart;
+  const textBefore = messageInput.value.substring(0, cursorPos);
+  const textAfter = messageInput.value.substring(cursorPos);
+
+  messageInput.value = textBefore + emoji + textAfter;
+  messageInput.focus();
+  messageInput.setSelectionRange(cursorPos + emoji.length, cursorPos + emoji.length);
+};
+
+// ============================================
+// NOTIFICATION SYSTEM
+// ============================================
+
+// Listen to notifications
+function listenToNotifications() {
+  if (!currentUser) return;
+
+  database.ref(`notifications/${currentUser.uid}`).on('child_added', async (snapshot) => {
+    const notification = snapshot.val();
+    if (notification.read) return;
+
+    // Get sender data
+    const userSnapshot = await database.ref(`users/${notification.from}`).once('value');
+    const userData = userSnapshot.val();
+
+    let message = '';
+    switch (notification.type) {
+      case 'follow':
+        message = `${userData?.username || 'Someone'} started following you!`;
+        break;
+      case 'message':
+        message = `New message from ${userData?.username || 'Someone'}`;
+        break;
+      case 'like':
+        message = `${userData?.username || 'Someone'} liked your message`;
+        break;
+      case 'mention':
+        message = `${userData?.username || 'Someone'} mentioned you`;
+        break;
+    }
+
+    showNotification(message);
+
+    // Mark as read after showing
+    setTimeout(() => {
+      database.ref(`notifications/${currentUser.uid}/${snapshot.key}`).update({ read: true });
+    }, 3000);
+  });
+}
+
+function showNotification(message) {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = 'toast-notification';
+  notification.textContent = message;
+
+  document.body.appendChild(notification);
+
+  // Show notification
+  setTimeout(() => notification.classList.add('show'), 100);
+
+  // Hide and remove after 3 seconds
+  setTimeout(() => {
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
 
 // ============================================
 // NEW ADMIN FEATURES
@@ -1399,6 +2411,269 @@ document.querySelectorAll('.admin-menu-item').forEach(item => {
     switchAdminTab(item.dataset.tab);
   });
 });
+
+// ============================================
+// ADMIN MANAGEMENT
+// ============================================
+
+// Load admins list
+async function loadAdminsList() {
+  const adminsList = document.getElementById('adminsList');
+  if (!adminsList) return;
+
+  try {
+    const usersSnapshot = await database.ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+
+    const admins = Object.entries(users).filter(([uid, user]) => user.role === 'admin');
+
+    if (admins.length === 0) {
+      adminsList.innerHTML = '<div class="loading-text">没有管理员</div>';
+      return;
+    }
+
+    adminsList.innerHTML = admins.map(([uid, user]) => {
+      const isCurrentUser = uid === currentUser.uid;
+      const avatar = user.avatarUrl
+        ? `<img src="${user.avatarUrl}" alt="${user.username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`
+        : generateLetterAvatar(user.username || 'A', user.color);
+
+      return `
+        <div class="admin-list-item ${isCurrentUser ? 'current-user' : ''}">
+          <div class="admin-item-info">
+            <div class="admin-item-avatar" style="${!user.avatarUrl ? `background: ${user.color || '#666'};` : ''}">${avatar}</div>
+            <div class="admin-item-details">
+              <div class="admin-item-name">${escapeHtml(user.username || 'Unknown')} ${isCurrentUser ? '(You)' : ''}</div>
+              <div class="admin-item-email">${escapeHtml(user.email || '')}</div>
+            </div>
+          </div>
+          <div class="admin-item-actions">
+            <span class="admin-item-badge">Admin</span>
+            ${!isCurrentUser ? `
+              <button class="btn-icon danger" onclick="removeAdmin('${uid}', '${escapeHtml(user.username || 'Unknown')}')">
+                移除
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (error) {
+    console.error('Failed to load admins:', error);
+    adminsList.innerHTML = '<div class="loading-text">加载失败</div>';
+  }
+}
+
+// Load role statistics
+async function loadRoleStats() {
+  try {
+    const usersSnapshot = await database.ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+
+    const stats = {
+      admin: 0,
+      user: 0,
+      banned: 0,
+      muted: 0
+    };
+
+    Object.values(users).forEach(user => {
+      if (user.role === 'admin') stats.admin++;
+      else stats.user++;
+      if (user.banned) stats.banned++;
+      if (user.muted) stats.muted++;
+    });
+
+    document.getElementById('adminCount').textContent = stats.admin;
+    document.getElementById('userCount').textContent = stats.user;
+    document.getElementById('bannedCount').textContent = stats.banned;
+    document.getElementById('mutedCount').textContent = stats.muted;
+
+  } catch (error) {
+    console.error('Failed to load role stats:', error);
+  }
+}
+
+// Promote user to admin
+window.promoteToAdmin = async function() {
+  showCustomModal({
+    icon: '👑',
+    title: '添加管理员',
+    message: '请输入要提升为管理员的用户邮箱：',
+    type: 'prompt',
+    inputPlaceholder: '用户邮箱',
+    confirmText: '提升',
+    cancelText: '取消',
+    onConfirm: async (email) => {
+      if (!email) {
+        showError('请输入邮箱');
+        return;
+      }
+
+      try {
+        // Find user by email
+        const usersSnapshot = await database.ref('users').once('value');
+        const users = usersSnapshot.val() || {};
+
+        const userEntry = Object.entries(users).find(([uid, user]) => user.email === email);
+
+        if (!userEntry) {
+          showError('未找到该用户');
+          return;
+        }
+
+        const [uid, user] = userEntry;
+
+        if (user.role === 'admin') {
+          showError('该用户已经是管理员');
+          return;
+        }
+
+        // Confirm promotion
+        showCustomModal({
+          icon: '⚠️',
+          title: '确认提升',
+          message: `确定要将 ${user.username} (${email}) 提升为管理员吗？\n\n管理员拥有所有权限，请谨慎操作！`,
+          type: 'confirm',
+          confirmText: '确认',
+          cancelText: '取消',
+          dangerButton: false,
+          onConfirm: async () => {
+            await database.ref(`users/${uid}/role`).set('admin');
+            showSuccess(`${user.username} 已提升为管理员`);
+            await logAdminAction('PROMOTE_ADMIN', uid, { username: user.username, email: email });
+            loadAdminsList();
+            loadRoleStats();
+          }
+        });
+
+      } catch (error) {
+        console.error('Failed to promote user:', error);
+        showError('提升失败');
+      }
+    }
+  });
+};
+
+// Remove admin
+window.removeAdmin = async function(uid, username) {
+  showCustomModal({
+    icon: '⚠️',
+    title: '移除管理员',
+    message: `确定要移除 ${username} 的管理员权限吗？\n\n该用户将降级为普通用户。`,
+    type: 'confirm',
+    confirmText: '移除',
+    cancelText: '取消',
+    dangerButton: true,
+    onConfirm: async () => {
+      try {
+        await database.ref(`users/${uid}/role`).set('user');
+        showSuccess(`${username} 已移除管理员权限`);
+        await logAdminAction('REMOVE_ADMIN', uid, { username: username });
+        loadAdminsList();
+        loadRoleStats();
+      } catch (error) {
+        console.error('Failed to remove admin:', error);
+        showError('移除失败');
+      }
+    }
+  });
+};
+
+// Quick search users
+const quickSearchInput = document.getElementById('quickSearchUser');
+if (quickSearchInput) {
+  let searchTimeout;
+  quickSearchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      quickSearchUsers(e.target.value);
+    }, 300);
+  });
+}
+
+async function quickSearchUsers(query) {
+  const resultsContainer = document.getElementById('quickSearchResults');
+  if (!resultsContainer) return;
+
+  if (!query || query.length < 2) {
+    resultsContainer.innerHTML = '';
+    return;
+  }
+
+  try {
+    const usersSnapshot = await database.ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+
+    const results = Object.entries(users).filter(([uid, user]) => {
+      const searchStr = query.toLowerCase();
+      return user.username?.toLowerCase().includes(searchStr) ||
+             user.email?.toLowerCase().includes(searchStr);
+    }).slice(0, 10);
+
+    if (results.length === 0) {
+      resultsContainer.innerHTML = '<div class="loading-text">未找到用户</div>';
+      return;
+    }
+
+    resultsContainer.innerHTML = results.map(([uid, user]) => {
+      const avatar = user.avatarUrl
+        ? `<img src="${user.avatarUrl}" alt="${user.username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`
+        : generateLetterAvatar(user.username || 'U', user.color);
+
+      return `
+        <div class="quick-search-item">
+          <div class="quick-search-info">
+            <div class="quick-search-avatar" style="${!user.avatarUrl ? `background: ${user.color || '#666'};` : ''}">${avatar}</div>
+            <div class="quick-search-details">
+              <div class="quick-search-name">${escapeHtml(user.username || 'Unknown')}</div>
+              <div class="quick-search-email">${escapeHtml(user.email || '')}</div>
+            </div>
+          </div>
+          <div class="quick-search-actions">
+            ${user.role !== 'admin' ? `
+              <button class="btn-icon" onclick="quickPromoteAdmin('${uid}', '${escapeHtml(user.username || 'Unknown')}', '${escapeHtml(user.email || '')}')">
+                提升
+              </button>
+            ` : '<span class="admin-item-badge">Admin</span>'}
+            <button class="btn-icon" onclick="showUserProfile('${uid}')">
+              查看
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  } catch (error) {
+    console.error('Failed to search users:', error);
+    resultsContainer.innerHTML = '<div class="loading-text">搜索失败</div>';
+  }
+}
+
+window.quickPromoteAdmin = async function(uid, username, email) {
+  showCustomModal({
+    icon: '👑',
+    title: '提升为管理员',
+    message: `确定要将 ${username} (${email}) 提升为管理员吗？`,
+    type: 'confirm',
+    confirmText: '确认',
+    cancelText: '取消',
+    onConfirm: async () => {
+      try {
+        await database.ref(`users/${uid}/role`).set('admin');
+        showSuccess(`${username} 已提升为管理员`);
+        await logAdminAction('PROMOTE_ADMIN', uid, { username: username, email: email });
+        loadAdminsList();
+        loadRoleStats();
+        quickSearchUsers(document.getElementById('quickSearchUser').value);
+      } catch (error) {
+        console.error('Failed to promote user:', error);
+        showError('提升失败');
+      }
+    }
+  });
+};
 
 // Load Admin Dashboard
 async function loadAdminDashboard() {
@@ -2004,7 +3279,8 @@ function showAnnouncementDetail(announcement, userData) {
     image.innerHTML = '';
   }
 
-  let contentHtml = `<div style="margin: 0; padding: 0;">${escapeHtml(announcement.text)}</div>`;
+  // Combine text and files in one container
+  let contentHtml = `${escapeHtml(announcement.text)}`;
 
   // Add files if any
   if (announcement.files && announcement.files.length > 0) {
@@ -2847,8 +4123,14 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
           <button class="btn-action btn-like ${hasLiked ? 'liked' : ''}" onclick="toggleLike('${messageId}')">
             <span class="like-count">${likeCount > 0 ? likeCount : 'Like'}</span>
           </button>
+          <button class="btn-action btn-react" onclick="showReactionPicker('${messageId}', event)">
+            😊 React
+          </button>
           <button class="btn-action btn-reply" onclick="replyToMessage('${messageId}', '${escapeHtml(msg.text)}', '${escapeHtml(userData?.username || 'Unknown')}')">
             Reply
+          </button>
+          <button class="btn-action btn-bookmark" onclick="toggleBookmark('${messageId}')">
+            🔖 Save
           </button>
           ${isOwnMessage ? `
             <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
@@ -2861,6 +4143,11 @@ function createMessageElement(messageId, msg, userData, isNewMessage = false) {
           ${isAdmin ? `
             <button class="btn-action btn-pin" onclick="togglePin('${messageId}', ${!msg.pinned})">
               ${msg.pinned ? 'Unpin' : 'Pin'}
+            </button>
+          ` : ''}
+          ${isAdmin && !isOwnMessage ? `
+            <button class="btn-action btn-edit" onclick="editMessage('${messageId}', '${escapeHtml(msg.text)}')">
+              Edit
             </button>
             <button class="btn-action btn-delete-admin" onclick="deleteMessage('${messageId}')">
               Delete

@@ -121,6 +121,9 @@
 <div class="nav-container">
 <h2 class="nav-brand">Forum <span style="font-size: 10px; opacity: 0.5; margin-left: 8px;" id="versionDisplay">v5.1</span></h2>
 <div class="nav-actions">
+<button class="nav-btn" id="messagesInboxBtn" title="Messages">
+💬 Messages <span class="inbox-badge" id="inboxBadge" style="display: none;">0</span>
+</button>
 <button class="nav-btn" id="avatarBtn" title="Change avatar">Profile</button>
 <button class="nav-btn" id="adminPanelBtn" style="display: none;">Admin Panel</button>
 <button class="nav-btn" id="logoutBtn">Logout</button>
@@ -195,8 +198,19 @@
 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
 </svg>
 </button>
+<button class="btn-attach btn-emoji" id="emojiPickerBtn" title="Insert emoji">
+😊
+</button>
 <input type="text" id="messageInput" class="message-input" placeholder="Type your message..." maxlength="500">
 <button class="btn btn-send" id="sendMessageBtn">Send</button>
+</div>
+
+<!-- Emoji Picker -->
+<div class="emoji-picker" id="emojiPicker" style="display: none;">
+<div class="emoji-picker-header">
+<input type="text" id="emojiSearch" placeholder="Search emoji..." class="emoji-search">
+</div>
+<div class="emoji-picker-body" id="emojiPickerBody"></div>
 </div>
 </div>
 </div>
@@ -600,60 +614,64 @@
 <p class="admin-subtitle">管理用户角色和权限</p>
 </div>
 
+<!-- Security Warning -->
+<div class="admin-card" style="border-left: 4px solid #ff4444; background: #fff5f5;">
+<div class="card-header">
+<h3 class="card-title" style="color: #ff4444;">🔒 安全提示</h3>
+</div>
+<div style="padding: 0 20px 20px;">
+<p style="color: #666; margin-bottom: 10px;">请确保已完成以下安全配置：</p>
+<ul style="color: #666; margin-left: 20px; line-height: 1.8;">
+<li>✅ 已配置Firebase安全规则（见 <code>firebase-security-rules.json</code>）</li>
+<li>✅ 管理员使用强密码（至少12位，包含大小写字母、数字、特殊字符）</li>
+<li>✅ 定期检查管理员列表，移除不需要的管理员</li>
+<li>✅ 查看完整安全指南：<code>SECURITY_GUIDE.md</code></li>
+</ul>
+</div>
+</div>
+
+<!-- Admin Management -->
 <div class="admin-card">
 <div class="card-header">
-<h3 class="card-title">角色列表</h3>
-<button class="btn btn-primary" onclick="createRole()">➕ 创建角色</button>
+<h3 class="card-title">👑 管理员列表</h3>
+<button class="btn btn-primary" onclick="promoteToAdmin()">➕ 添加管理员</button>
 </div>
-<div class="roles-list" id="rolesList">
-<div class="role-item">
-<div class="role-info">
-<div class="role-name">管理员</div>
-<div class="role-desc">拥有所有权限</div>
-</div>
-<div class="role-actions">
-<button class="btn-icon" onclick="editRole('admin')">编辑</button>
+<div class="admin-list" id="adminsList">
+<div class="loading-text">加载中...</div>
 </div>
 </div>
-<div class="role-item">
-<div class="role-info">
-<div class="role-name">版主</div>
-<div class="role-desc">可以管理消息和用户</div>
+
+<div class="admin-card">
+<div class="card-header">
+<h3 class="card-title">角色统计</h3>
 </div>
-<div class="role-actions">
-<button class="btn-icon" onclick="editRole('moderator')">编辑</button>
-<button class="btn-icon danger" onclick="deleteRole('moderator')">删除</button>
+<div class="roles-stats" id="rolesStats">
+<div class="role-stat-item">
+<div class="role-stat-label">管理员</div>
+<div class="role-stat-value" id="adminCount">0</div>
 </div>
+<div class="role-stat-item">
+<div class="role-stat-label">普通用户</div>
+<div class="role-stat-value" id="userCount">0</div>
 </div>
-<div class="role-item">
-<div class="role-info">
-<div class="role-name">普通用户</div>
-<div class="role-desc">基本权限</div>
+<div class="role-stat-item">
+<div class="role-stat-label">被封禁</div>
+<div class="role-stat-value" id="bannedCount">0</div>
 </div>
-<div class="role-actions">
-<button class="btn-icon" onclick="editRole('user')">编辑</button>
-</div>
+<div class="role-stat-item">
+<div class="role-stat-label">被禁言</div>
+<div class="role-stat-value" id="mutedCount">0</div>
 </div>
 </div>
 </div>
 
 <div class="admin-card">
 <div class="card-header">
-<h3 class="card-title">批量操作</h3>
+<h3 class="card-title">快速操作</h3>
 </div>
-<div class="batch-operations">
-<select id="batchAction" class="form-input">
-<option value="">选择操作...</option>
-<option value="promote">提升为版主</option>
-<option value="demote">降级为普通用户</option>
-<option value="ban">批量封禁</option>
-<option value="unban">批量解封</option>
-<option value="delete">批量删除</option>
-</select>
-<button class="btn btn-primary" onclick="executeBatchAction()">执行操作</button>
-</div>
-<div class="batch-users" id="batchUsersList">
-<p style="color: #666; font-size: 14px;">选择用户后执行批量操作</p>
+<div class="quick-actions">
+<input type="text" id="quickSearchUser" class="form-input" placeholder="输入用户名或邮箱搜索..." style="margin-bottom: 15px;">
+<div id="quickSearchResults"></div>
 </div>
 </div>
 </div>
@@ -852,29 +870,6 @@ const auth = firebase.auth();
 const database = firebase.database();
 const storage = firebase.storage();
 
-// Create admin account on first load
-async function initializeAdmin() {
-  try {
-    // Try to create admin account
-    await auth.createUserWithEmailAndPassword('admin@puff.com', '123456');
-    const user = auth.currentUser;
-
-    await database.ref(`users/${user.uid}`).set({
-      username: 'Admin',
-      email: 'admin@puff.com',
-      role: 'admin',
-      createdAt: Date.now(),
-      banned: false,
-      muted: false
-    });
-
-    console.log('Admin account created');
-  } catch (error) {
-    // Admin account already exists
-    console.log('Admin account already exists');
-  }
-}
-
 // Initialize app version in Firebase
 async function initializeAppVersion() {
   try {
@@ -895,8 +890,7 @@ async function initializeAppVersion() {
   }
 }
 
-// Initialize admin on page load
-initializeAdmin();
+// Initialize app version on page load
 initializeAppVersion();
 </script>
 
@@ -946,6 +940,6 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <!-- Load main app with cache-busting version parameter -->
-<script src="app.js?v=5.1"></script>
+<script src="app.js?v=5.2"></script>
 </body>
 </html>
