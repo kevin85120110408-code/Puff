@@ -398,8 +398,8 @@ function showEmailVerificationModal(user) {
 
   // Set buttons
   customModalButtons.innerHTML = `
-    <button id="resendEmailBtn" class="modal-btn modal-btn-secondary">Resend Email</button>
-    <button id="checkVerificationBtn" class="modal-btn modal-btn-primary">I've Verified</button>
+    <button id="resendEmailBtn" class="custom-modal-btn custom-modal-btn-secondary">Resend Email</button>
+    <button id="checkVerificationBtn" class="custom-modal-btn custom-modal-btn-primary">I've Verified</button>
   `;
 
   // Show modal
@@ -3806,6 +3806,76 @@ window.recalculateUserStats = async function() {
         // Remove loading modal if it exists
         const loadingModal = document.querySelector('.modal');
         if (loadingModal) loadingModal.remove();
+      }
+    }
+  });
+};
+
+// Cleanup online status for deleted users
+window.cleanupOnlineStatus = async function() {
+  showCustomModal({
+    icon: '🧹',
+    title: '清理在线状态',
+    message: '这将删除所有已删除用户的在线状态数据。继续吗？',
+    type: 'confirm',
+    confirmText: '开始清理',
+    cancelText: '取消',
+    onConfirm: async () => {
+      try {
+        showSuccess('正在清理在线状态...');
+
+        // Get all online status entries
+        const statusSnapshot = await database.ref('status').once('value');
+        const statusData = statusSnapshot.val() || {};
+
+        // Get all valid users
+        const usersSnapshot = await database.ref('users').once('value');
+        const validUserIds = new Set(Object.keys(usersSnapshot.val() || {}));
+
+        let deletedCount = 0;
+        const updates = {};
+
+        // Find status entries for deleted users
+        for (const uid in statusData) {
+          if (!validUserIds.has(uid)) {
+            updates[`status/${uid}`] = null; // Mark for deletion
+            deletedCount++;
+          }
+        }
+
+        // Also clean up typing status
+        const typingSnapshot = await database.ref('typing').once('value');
+        const typingData = typingSnapshot.val() || {};
+
+        for (const uid in typingData) {
+          if (!validUserIds.has(uid)) {
+            updates[`typing/${uid}`] = null;
+            deletedCount++;
+          }
+        }
+
+        // Also clean up userStatus
+        const userStatusSnapshot = await database.ref('userStatus').once('value');
+        const userStatusData = userStatusSnapshot.val() || {};
+
+        for (const uid in userStatusData) {
+          if (!validUserIds.has(uid)) {
+            updates[`userStatus/${uid}`] = null;
+            deletedCount++;
+          }
+        }
+
+        // Apply all deletions at once
+        if (deletedCount > 0) {
+          await database.ref().update(updates);
+          showSuccess(`✅ 已清理 ${deletedCount} 个已删除用户的状态数据`);
+        } else {
+          showSuccess('✅ 没有需要清理的数据');
+        }
+
+      } catch (error) {
+        console.error('Failed to cleanup online status:', error);
+        showError('清理失败: ' + error.message);
       }
     }
   });

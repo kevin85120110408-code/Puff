@@ -4,7 +4,7 @@
     ".write": false,
 
     "users": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": true,
       ".indexOn": ["username", "email"],
       "$uid": {
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
@@ -21,36 +21,36 @@
           ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
         },
         "conversations": {
-          ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
+          ".read": "auth != null && auth.uid === $uid",
           "$chatId": {
-            ".write": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))"
+            ".write": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))"
           }
         }
       }
     },
 
     "messages": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": "auth != null",
       ".indexOn": ["timestamp", "pinned", "userId"],
       "$messageId": {
-        ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (!data.exists() || data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".validate": "newData.hasChildren(['userId', 'text', 'timestamp'])"
       }
     },
-    
+
     "announcements": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": "auth != null",
       ".indexOn": ["timestamp"],
       "$announcementId": {
-        ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         ".validate": "newData.hasChildren(['title', 'content', 'timestamp', 'authorId'])"
       }
     },
 
     "privateMessages": {
       "$chatId": {
-        ".read": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
-        ".write": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
+        ".read": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
+        ".write": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
         "$messageId": {
           ".validate": "newData.hasChildren(['from', 'to', 'text', 'timestamp']) && (newData.child('from').val() == auth.uid || newData.child('to').val() == auth.uid)"
         }
@@ -59,72 +59,72 @@
 
     "notifications": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.email_verified === true"
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
       }
     },
 
     "reactions": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": "auth != null",
       "$messageId": {
-        ".write": "auth != null && auth.token.email_verified === true"
+        ".write": "auth != null"
       }
     },
 
     "bookmarks": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true && auth.uid === $uid",
-        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
 
     "following": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true",
-        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
 
     "followers": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true",
-        ".write": "auth != null && auth.token.email_verified === true"
+        ".read": "auth != null",
+        ".write": "auth != null"
       }
     },
 
     "status": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
 
     "reports": {
-      ".read": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null && auth.token.email_verified === true"
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null"
     },
 
     "adminLogs": {
-      ".read": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
 
     "appVersion": {
-      ".read": "auth != null && auth.token.email_verified === true",
-      ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".read": "auth != null",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
 
     "typing": {
-      ".read": "auth != null && auth.token.email_verified === true",
+      ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
+        ".write": "auth != null && auth.uid === $uid"
       }
     },
 
     "checkIns": {
       "$uid": {
-        ".read": "auth != null && auth.token.email_verified === true",
-        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
       }
     }
   }
