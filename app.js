@@ -607,6 +607,7 @@ function updateUnreadCount() {
 }
 
 async function loadMessages() {
+  console.time('⏱️ Total loadMessages');
   const messagesRef = database.ref('messages').limitToLast(50);
 
   // Reset infinite scroll state
@@ -628,7 +629,10 @@ async function loadMessages() {
 
   try {
     // Pre-fetch all messages first to batch load user data
+    console.time('⏱️ Fetch messages');
     const initialSnapshot = await messagesRef.once('value');
+    console.timeEnd('⏱️ Fetch messages');
+
     const messages = [];
     const userIds = new Set();
 
@@ -640,15 +644,26 @@ async function loadMessages() {
       }
     });
 
+    console.log(`📊 Found ${messages.length} messages from ${userIds.size} users`);
+
     // Batch load all user data
+    console.time('⏱️ Load user data');
     await Promise.all(Array.from(userIds).map(userId => getUserData(userId)));
+    console.timeEnd('⏱️ Load user data');
+
+    // Remove loading indicator
+    const finalLoadingText = messagesContainer.querySelector('.loading-text');
+    if (finalLoadingText) {
+      finalLoadingText.remove();
+    }
 
     // Batch render all messages at once using DocumentFragment
+    console.time('⏱️ Render messages');
     const fragment = document.createDocumentFragment();
 
     for (const { key, val } of messages) {
       loadedMessages.add(key);
-      const userData = await getUserData(val.userId);
+      const userData = userCache.get(val.userId); // Use cached data directly
 
       // Track oldest message
       if (!oldestMessageKey || key < oldestMessageKey) {
@@ -661,23 +676,26 @@ async function loadMessages() {
 
       // Set up listeners
       listenToReactions(key);
-      database.ref(`status/${val.userId}/online`).on('value', (statusSnapshot) => {
-        const onlineDot = document.getElementById(`online-${val.userId}`);
-        if (onlineDot) {
-          onlineDot.style.display = statusSnapshot.val() ? 'block' : 'none';
-        }
-      });
       observeMessageVisibility(messageEl, key, val.userId);
-    }
-
-    // Remove loading indicator
-    const finalLoadingText = messagesContainer.querySelector('.loading-text');
-    if (finalLoadingText) {
-      finalLoadingText.remove();
     }
 
     // Append all messages at once
     messagesContainer.appendChild(fragment);
+    console.timeEnd('⏱️ Render messages');
+
+    // Set up online status listeners for unique users only (not per message)
+    console.time('⏱️ Setup status listeners');
+    Array.from(userIds).forEach(userId => {
+      database.ref(`status/${userId}/online`).on('value', (statusSnapshot) => {
+        const onlineDots = document.querySelectorAll(`#online-${userId}`);
+        onlineDots.forEach(dot => {
+          if (dot) {
+            dot.style.display = statusSnapshot.val() ? 'block' : 'none';
+          }
+        });
+      });
+    });
+    console.timeEnd('⏱️ Setup status listeners');
 
     // Scroll to bottom
     setTimeout(() => {
@@ -687,8 +705,11 @@ async function loadMessages() {
       });
     }, 100);
 
+    console.timeEnd('⏱️ Total loadMessages');
+
   } catch (error) {
     console.error('Error pre-loading user data:', error);
+    console.timeEnd('⏱️ Total loadMessages');
     // Continue anyway
     const errorLoadingText = messagesContainer.querySelector('.loading-text');
     if (errorLoadingText) {
@@ -1833,21 +1854,36 @@ window.sendPrivateMessage = async function(chatId, recipientId) {
   if (!text) return;
 
   try {
+    const timestamp = Date.now();
+
+    // Send message
     await database.ref(`privateMessages/${chatId}`).push({
       from: currentUser.uid,
       to: recipientId,
       text: text,
-      timestamp: Date.now(),
+      timestamp: timestamp,
       read: false
     });
 
     input.value = '';
 
+    // Update conversation list for both users
+    await Promise.all([
+      database.ref(`users/${currentUser.uid}/conversations/${chatId}`).set({
+        lastMessageTime: timestamp,
+        otherUserId: recipientId
+      }),
+      database.ref(`users/${recipientId}/conversations/${chatId}`).set({
+        lastMessageTime: timestamp,
+        otherUserId: currentUser.uid
+      })
+    ]);
+
     // Send notification
     await database.ref(`notifications/${recipientId}`).push({
       type: 'message',
       from: currentUser.uid,
-      timestamp: Date.now(),
+      timestamp: timestamp,
       read: false
     });
   } catch (error) {
@@ -1951,43 +1987,61 @@ async function loadInboxConversations() {
   if (!inboxList) return;
 
   try {
-    // Get all private messages where user is involved
-    const messagesSnapshot = await database.ref('privateMessages').once('value');
-    const allMessages = messagesSnapshot.val() || {};
+    // Get user's conversation list from their user data
+    const conversationsRef = database.ref(`users/${currentUser.uid}/conversations`);
+    const conversationsSnapshot = await conversationsRef.once('value');
+    const userConversations = conversationsSnapshot.val() || {};
 
-    // Group messages by conversation
+    // Get all chat IDs for this user
+    const chatIds = Object.keys(userConversations);
+
+    if (chatIds.length === 0) {
+      inboxList.innerHTML = `
+        <div class="inbox-empty">
+          <div class="inbox-empty-icon">💬</div>
+          <div class="inbox-empty-text">No messages yet</div>
+        </div>
+      `;
+      return;
+    }
+
+    // Load messages for each conversation
     const conversations = {};
 
-    for (const chatId in allMessages) {
-      const messages = allMessages[chatId];
+    for (const chatId of chatIds) {
+      try {
+        const messagesSnapshot = await database.ref(`privateMessages/${chatId}`).once('value');
+        const messages = messagesSnapshot.val() || {};
 
-      // Check if current user is part of this conversation
-      const userIds = chatId.split('_');
-      if (!userIds.includes(currentUser.uid)) continue;
+        // Get the other user's ID
+        const userIds = chatId.split('_');
+        const otherUserId = userIds.find(id => id !== currentUser.uid);
+        if (!otherUserId) continue;
 
-      // Get the other user's ID
-      const otherUserId = userIds.find(id => id !== currentUser.uid);
-      if (!otherUserId) continue;
+        // Get last message
+        const messagesList = Object.values(messages);
+        if (messagesList.length === 0) continue;
 
-      // Get last message
-      const messagesList = Object.values(messages);
-      if (messagesList.length === 0) continue; // Skip empty conversations
+        const lastMessage = messagesList[messagesList.length - 1];
+        if (!lastMessage || !lastMessage.timestamp) continue;
 
-      const lastMessage = messagesList[messagesList.length - 1];
-      if (!lastMessage || !lastMessage.timestamp) continue; // Skip invalid messages
+        // Count unread messages
+        const unreadCount = messagesList.filter(msg =>
+          msg.to === currentUser.uid && !msg.read
+        ).length;
 
-      // Count unread messages
-      const unreadCount = messagesList.filter(msg =>
-        msg.to === currentUser.uid && !msg.read
-      ).length;
-
-      conversations[chatId] = {
-        chatId,
-        otherUserId,
-        lastMessage,
-        unreadCount,
-        timestamp: lastMessage.timestamp
-      };
+        conversations[chatId] = {
+          chatId,
+          otherUserId,
+          lastMessage,
+          unreadCount,
+          timestamp: lastMessage.timestamp
+        };
+      } catch (error) {
+        console.error(`Error loading conversation ${chatId}:`, error);
+        // Skip this conversation if there's an error
+        continue;
+      }
     }
 
     // Sort by timestamp (newest first)
@@ -5630,6 +5684,7 @@ function initOnlineUsersList() {
 let lastOnlineUsersHTML = '';
 
 async function updateOnlineUsersList(statusSnapshot) {
+  console.time('⏱️ Update online users');
   const onlineUsersContainer = document.getElementById('onlineUsersList');
 
   if (!onlineUsersContainer) {
@@ -5652,7 +5707,10 @@ async function updateOnlineUsersList(statusSnapshot) {
     }
   });
 
+  console.log(`👥 Found ${onlineUsers.length} online users`);
+
   // Get user data for online users - use cache first (most will be cached)
+  console.time('⏱️ Load online users data');
   const usersData = await Promise.all(onlineUsers.map(async (user) => {
     // Check cache first
     if (userCache.has(user.uid)) {
@@ -5676,6 +5734,7 @@ async function updateOnlineUsersList(statusSnapshot) {
       ...userData
     };
   }));
+  console.timeEnd('⏱️ Load online users data');
 
   // Update display
   if (usersData.length === 0) {
@@ -5723,6 +5782,8 @@ async function updateOnlineUsersList(statusSnapshot) {
       onlineUsersContainer.classList.remove('content-fade-in');
     }, 500);
   }
+
+  console.timeEnd('⏱️ Update online users');
 }
 
 // ============================================
