@@ -345,6 +345,16 @@ function showSuccess(message) {
   });
 }
 
+function showWarning(message) {
+  showCustomModal({
+    icon: '⚠️',
+    title: 'Warning',
+    message: message,
+    type: 'alert',
+    confirmText: 'OK'
+  });
+}
+
 function showConfirm(message, onConfirm, onCancel = () => {}) {
   showCustomModal({
     icon: '?',
@@ -391,13 +401,6 @@ auth.onAuthStateChanged(async (user) => {
   if (user) {
     currentUser = user;
 
-    // Check if email is verified
-    if (!user.emailVerified) {
-      showError('Please verify your email before accessing the forum. Check your inbox!');
-      await auth.signOut();
-      return;
-    }
-
     const userRef = database.ref(`users/${user.uid}`);
     const snapshot = await userRef.once('value');
     const userData = snapshot.val();
@@ -410,6 +413,18 @@ auth.onAuthStateChanged(async (user) => {
     }
 
     isAdmin = userData?.role === 'admin';
+
+    // Check if email is verified (but allow admins to bypass for now)
+    if (!user.emailVerified && !isAdmin) {
+      showError('Please verify your email before accessing the forum. Check your inbox!');
+      await auth.signOut();
+      return;
+    }
+
+    // Show warning to unverified admins
+    if (!user.emailVerified && isAdmin) {
+      showWarning('⚠️ Admin: Please verify your email for better security!');
+    }
 
     if (isAdmin) {
       adminPanelBtn.style.display = 'block';
