@@ -6,7 +6,22 @@ const devLog = isProduction ? () => {} : console.log.bind(console);
 const devTime = isProduction ? () => {} : console.time.bind(console);
 const devTimeEnd = isProduction ? () => {} : console.timeEnd.bind(console);
 
-devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.2 🔥🔥🔥');
+devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.9 🔥🔥🔥');
+
+// ===== CONSTANTS =====
+const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MAX_LENGTH = 128;
+const USERNAME_MIN_LENGTH = 3;
+const USERNAME_MAX_LENGTH = 20;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;  // 10MB
+const MAX_TOTAL_FILE_SIZE = 25 * 1024 * 1024;  // 25MB
+const ALLOWED_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'application/pdf', 'text/plain',
+  'application/zip', 'application/x-zip-compressed'
+];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/;
 devLog('Production mode:', isProduction);
 
 // Global state
@@ -49,6 +64,50 @@ function cleanupAllListeners() {
     ref.off(eventType, callback);
   });
   activeListeners.clear();
+}
+
+// Cleanup IntersectionObserver (declared later in the file)
+function cleanupObservers() {
+  if (typeof messageObserver !== 'undefined' && messageObserver) {
+    messageObserver.disconnect();
+    devLog('🧹 Cleaned up IntersectionObserver');
+  }
+}
+
+// Utility: Debounce function to prevent excessive calls
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Timeout management to prevent memory leaks
+const activeTimeouts = new Set();
+
+function managedSetTimeout(callback, delay) {
+  const timeoutId = setTimeout(() => {
+    activeTimeouts.delete(timeoutId);
+    callback();
+  }, delay);
+  activeTimeouts.add(timeoutId);
+  return timeoutId;
+}
+
+function clearManagedTimeout(timeoutId) {
+  clearTimeout(timeoutId);
+  activeTimeouts.delete(timeoutId);
+}
+
+function clearAllTimeouts() {
+  devLog(`🧹 Clearing ${activeTimeouts.size} active timeouts`);
+  activeTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+  activeTimeouts.clear();
 }
 
 // DOM Elements
@@ -147,35 +206,48 @@ function showCustomModal(options) {
     customModalInputContainer.style.display = 'none';
   }
 
-  // Clear previous buttons
+  // Clear previous buttons and their event listeners
   customModalButtons.innerHTML = '';
+
+  // Store handlers for cleanup
+  const handlers = {
+    confirm: null,
+    cancel: null,
+    overlay: null
+  };
 
   // Create buttons based on type
   if (type === 'alert') {
     const okBtn = document.createElement('button');
     okBtn.className = 'custom-modal-btn custom-modal-btn-primary';
     okBtn.textContent = confirmText;
-    okBtn.onclick = () => {
+
+    handlers.confirm = () => {
       hideCustomModal();
       onConfirm();
     };
+    okBtn.addEventListener('click', handlers.confirm);
     customModalButtons.appendChild(okBtn);
   } else if (type === 'confirm') {
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'custom-modal-btn custom-modal-btn-secondary';
     cancelBtn.textContent = cancelText;
-    cancelBtn.onclick = () => {
+
+    handlers.cancel = () => {
       hideCustomModal();
       onCancel();
     };
+    cancelBtn.addEventListener('click', handlers.cancel);
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = `custom-modal-btn ${dangerButton ? 'custom-modal-btn-danger' : 'custom-modal-btn-primary'}`;
     confirmBtn.textContent = confirmText;
-    confirmBtn.onclick = () => {
+
+    handlers.confirm = () => {
       hideCustomModal();
       onConfirm();
     };
+    confirmBtn.addEventListener('click', handlers.confirm);
 
     customModalButtons.appendChild(cancelBtn);
     customModalButtons.appendChild(confirmBtn);
@@ -183,37 +255,48 @@ function showCustomModal(options) {
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'custom-modal-btn custom-modal-btn-secondary';
     cancelBtn.textContent = cancelText;
-    cancelBtn.onclick = () => {
+
+    handlers.cancel = () => {
       hideCustomModal();
       onCancel();
     };
+    cancelBtn.addEventListener('click', handlers.cancel);
 
     const confirmBtn = document.createElement('button');
     confirmBtn.className = 'custom-modal-btn custom-modal-btn-primary';
     confirmBtn.textContent = confirmText;
-    confirmBtn.onclick = () => {
+
+    handlers.confirm = () => {
       const value = customModalInput.value;
       hideCustomModal();
       onConfirm(value);
     };
+    confirmBtn.addEventListener('click', handlers.confirm);
 
     customModalButtons.appendChild(cancelBtn);
     customModalButtons.appendChild(confirmBtn);
 
-    // Focus input after modal shows
-    setTimeout(() => customModalInput.focus(), 300);
+    // Focus input after modal shows (use managed timeout)
+    managedSetTimeout(() => customModalInput.focus(), 300);
   }
 
   // Show modal
   customModalOverlay.classList.add('show');
 
-  // Close on overlay click
-  customModalOverlay.onclick = (e) => {
+  // Close on overlay click - use addEventListener for proper cleanup
+  handlers.overlay = (e) => {
     if (e.target === customModalOverlay) {
       hideCustomModal();
       onCancel();
     }
   };
+
+  // Remove previous overlay listener if exists
+  if (customModalOverlay._overlayHandler) {
+    customModalOverlay.removeEventListener('click', customModalOverlay._overlayHandler);
+  }
+  customModalOverlay._overlayHandler = handlers.overlay;
+  customModalOverlay.addEventListener('click', handlers.overlay);
 
   // Close on Escape key
   const escapeHandler = (e) => {
@@ -307,6 +390,14 @@ let userStatusListener = null;
 auth.onAuthStateChanged(async (user) => {
   if (user) {
     currentUser = user;
+
+    // Check if email is verified
+    if (!user.emailVerified) {
+      showError('Please verify your email before accessing the forum. Check your inbox!');
+      await auth.signOut();
+      return;
+    }
+
     const userRef = database.ref(`users/${user.uid}`);
     const snapshot = await userRef.once('value');
     const userData = snapshot.val();
@@ -366,13 +457,17 @@ auth.onAuthStateChanged(async (user) => {
     console.log('2️⃣ Initializing mention autocomplete...');
     initMentionAutocomplete();
 
-    // Mark messages as read when user scrolls to bottom
-    messagesContainer.addEventListener('scroll', () => {
-      const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 50;
-      if (isAtBottom) {
-        updateLastReadTimestamp();
-      }
-    });
+    // Mark messages as read when user scrolls to bottom (with passive for better performance)
+    // Only add if not already added
+    if (!messagesContainer.hasAttribute('data-scroll-read-initialized')) {
+      messagesContainer.setAttribute('data-scroll-read-initialized', 'true');
+      messagesContainer.addEventListener('scroll', () => {
+        const isAtBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight < 50;
+        if (isAtBottom) {
+          updateLastReadTimestamp();
+        }
+      }, { passive: true });
+    }
 
     // Initialize online users list
     console.log('3️⃣ About to initialize online users list...');
@@ -475,12 +570,46 @@ loginBtn.addEventListener('click', async () => {
     return;
   }
 
+  // Validate email format
+  if (!EMAIL_REGEX.test(email)) {
+    showError('Please enter a valid email address');
+    return;
+  }
+
   // Disable button to prevent double-click
   loginBtn.disabled = true;
   loginBtn.textContent = 'Signing in...';
 
   try {
-    await auth.signInWithEmailAndPassword(email, password);
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+
+    // Check if email is verified
+    if (!user.emailVerified) {
+      // Show option to resend verification email
+      showCustomModal(
+        'Email Not Verified',
+        'Please verify your email before logging in. Check your inbox for the verification link.',
+        'Resend Verification Email',
+        async () => {
+          try {
+            await user.sendEmailVerification({
+              url: window.location.origin,
+              handleCodeInApp: false
+            });
+            showSuccess('Verification email sent! Please check your inbox.');
+          } catch (error) {
+            showError('Failed to send verification email: ' + error.message);
+          }
+        },
+        'Cancel'
+      );
+
+      await auth.signOut();
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
+      return;
+    }
 
     if (rememberMe.checked) {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
@@ -505,8 +634,38 @@ registerBtn.addEventListener('click', async () => {
     return;
   }
 
-  if (password.length < 6) {
-    showError('Password must be at least 6 characters');
+  // Validate username length
+  if (username.length < USERNAME_MIN_LENGTH || username.length > USERNAME_MAX_LENGTH) {
+    showError(`Username must be ${USERNAME_MIN_LENGTH}-${USERNAME_MAX_LENGTH} characters`);
+    return;
+  }
+
+  // Validate username format (only letters, numbers, underscores, and Chinese characters)
+  if (!USERNAME_REGEX.test(username)) {
+    showError('Username can only contain letters, numbers, underscores, and Chinese characters');
+    return;
+  }
+
+  // Validate email format
+  if (!EMAIL_REGEX.test(email)) {
+    showError('Please enter a valid email address');
+    return;
+  }
+
+  // Validate password length
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    showError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+    return;
+  }
+
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    showError(`Password is too long (max ${PASSWORD_MAX_LENGTH} characters)`);
+    return;
+  }
+
+  // Validate password strength (must contain both letters and numbers)
+  if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(password)) {
+    showError('Password must contain both letters and numbers');
     return;
   }
 
@@ -515,10 +674,28 @@ registerBtn.addEventListener('click', async () => {
   registerBtn.textContent = 'Creating...';
 
   try {
+    // Check username uniqueness
+    const usersSnapshot = await database.ref('users')
+      .orderByChild('username')
+      .equalTo(username)
+      .once('value');
+
+    if (usersSnapshot.exists()) {
+      showError('Username already taken. Please choose another one.');
+      registerBtn.disabled = false;
+      registerBtn.textContent = 'Create Account';
+      return;
+    }
+
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
-    // Save user data
+    // IMPORTANT: Sign out IMMEDIATELY to prevent race condition
+    // This must happen BEFORE saving to database or sending email
+    await auth.signOut();
+
+    // Save user data (after sign out to prevent race condition)
+    // Note: We don't store emailVerified in database because Firebase Auth already tracks this
     await database.ref(`users/${user.uid}`).set({
       username: username,
       email: email,
@@ -529,7 +706,17 @@ registerBtn.addEventListener('click', async () => {
       messageCount: 0
     });
 
-    showSuccess('Account created successfully!');
+    // Send verification email (after sign out)
+    await user.sendEmailVerification({
+      url: window.location.origin, // Redirect back to the app after verification
+      handleCodeInApp: false
+    });
+
+    showSuccess('Account created! Please check your email to verify your account.');
+
+    // Re-enable button
+    registerBtn.disabled = false;
+    registerBtn.textContent = 'Create Account';
   } catch (error) {
     showError(error.message);
     // Re-enable button on error
@@ -542,6 +729,9 @@ logoutBtn.addEventListener('click', async () => {
   // Clean up all listeners before logout
   cleanupAllListeners();
   cleanupActivityListeners();
+  cleanupObservers();
+  clearAllTimeouts();
+  stopStatsUpdate(); // Stop statistics updates
   await auth.signOut();
 });
 
@@ -1070,19 +1260,25 @@ fileInput.addEventListener('change', (e) => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
 
+  // Check file types
+  const invalidFile = files.find(file => !ALLOWED_FILE_TYPES.includes(file.type));
+  if (invalidFile) {
+    showError(`File type not allowed: ${invalidFile.name}. Allowed types: images, PDF, text, and ZIP files.`);
+    fileInput.value = '';
+    return;
+  }
+
   // Check total size (max 25MB total)
-  const maxTotalSize = 25 * 1024 * 1024; // 25MB
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
 
-  if (totalSize > maxTotalSize) {
+  if (totalSize > MAX_TOTAL_FILE_SIZE) {
     showError('Total file size must be less than 25MB');
     fileInput.value = '';
     return;
   }
 
   // Check individual file size (max 10MB per file)
-  const maxFileSize = 10 * 1024 * 1024; // 10MB
-  const oversizedFile = files.find(file => file.size > maxFileSize);
+  const oversizedFile = files.find(file => file.size > MAX_FILE_SIZE);
   if (oversizedFile) {
     showError(`File "${oversizedFile.name}" is too large. Max 10MB per file.`);
     fileInput.value = '';
@@ -1240,13 +1436,20 @@ function initTypingIndicator() {
     }, 3000);
   };
 
-  // Listen to multiple events for better responsiveness
-  msgInput.addEventListener('input', handleTyping);
-  msgInput.addEventListener('compositionstart', handleTyping); // 开始输入拼音
-  msgInput.addEventListener('compositionupdate', handleTyping); // 输入拼音过程中
-  msgInput.addEventListener('keydown', handleTyping); // 按键时立即响应
+  // Only add listeners if not already initialized (prevent duplicate listeners)
+  if (!msgInput.hasAttribute('data-typing-initialized')) {
+    msgInput.setAttribute('data-typing-initialized', 'true');
 
-  console.log('✅ Typing indicator initialized');
+    // Listen to multiple events for better responsiveness
+    msgInput.addEventListener('input', handleTyping);
+    msgInput.addEventListener('compositionstart', handleTyping); // 开始输入拼音
+    msgInput.addEventListener('compositionupdate', handleTyping); // 输入拼音过程中
+    msgInput.addEventListener('keydown', handleTyping); // 按键时立即响应
+
+    console.log('✅ Typing indicator initialized');
+  } else {
+    console.log('ℹ️ Typing indicator already initialized, skipping');
+  }
 }
 
 // sendMessage function is defined below with full features (line ~2235)
@@ -1804,13 +2007,25 @@ window.showUserProfile = async function(userId) {
 // FOLLOW SYSTEM (REAL-TIME)
 // ============================================
 
+// Track ongoing follow operations to prevent race conditions
+const followOperations = new Set();
+
 window.toggleFollow = async function(userId) {
   if (!currentUser) {
     showError('Please login to follow users');
     return;
   }
 
+  // Prevent duplicate operations
+  const operationKey = `${currentUser.uid}_${userId}`;
+  if (followOperations.has(operationKey)) {
+    devLog('Follow operation already in progress');
+    return;
+  }
+
   try {
+    followOperations.add(operationKey);
+
     const followingRef = database.ref(`following/${currentUser.uid}/${userId}`);
     const followerRef = database.ref(`followers/${userId}/${currentUser.uid}`);
 
@@ -1842,6 +2057,8 @@ window.toggleFollow = async function(userId) {
   } catch (error) {
     console.error('Follow error:', error);
     showError('Failed to follow user');
+  } finally {
+    followOperations.delete(operationKey);
   }
 };
 
@@ -1865,13 +2082,13 @@ window.openPrivateMessage = function(userId, username) {
     <div class="modal-content pm-modal">
       <div class="modal-header">
         <h3>Chat with ${escapeHtml(username)}</h3>
-        <button class="modal-close" onclick="this.closest('.modal').remove()">✕</button>
+        <button class="modal-close" id="pmModalClose">✕</button>
       </div>
       <div class="modal-body">
         <div class="pm-messages" id="pmMessages"></div>
         <div class="pm-input-container">
           <input type="text" id="pmInput" placeholder="Type a message..." class="pm-input">
-          <button onclick="sendPrivateMessage('${chatId}', '${userId}')" class="btn-primary">Send</button>
+          <button id="pmSendBtn" class="btn-primary">Send</button>
         </div>
       </div>
     </div>
@@ -1885,21 +2102,52 @@ window.openPrivateMessage = function(userId, username) {
   // Mark all messages in this chat as read
   markChatAsRead(chatId);
 
-  // Enter to send
-  document.getElementById('pmInput').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
+  // Enter to send - Store handler for cleanup
+  const pmInput = document.getElementById('pmInput');
+  const pmSendBtn = document.getElementById('pmSendBtn');
+  const pmModalClose = document.getElementById('pmModalClose');
+
+  const enterHandler = (e) => {
+    if (e.key === 'Enter' && !isSendingPM) {
       sendPrivateMessage(chatId, userId);
     }
-  });
+  };
+
+  const sendHandler = () => {
+    if (!isSendingPM) {
+      sendPrivateMessage(chatId, userId);
+    }
+  };
+
+  const closeHandler = () => {
+    // Clean up event listeners before removing modal
+    pmInput.removeEventListener('keypress', enterHandler);
+    pmSendBtn.removeEventListener('click', sendHandler);
+    modal.remove();
+  };
+
+  pmInput.addEventListener('keypress', enterHandler);
+  pmSendBtn.addEventListener('click', sendHandler);
+  pmModalClose.addEventListener('click', closeHandler);
 };
+
+// Track sending state to prevent duplicate sends
+let isSendingPM = false;
 
 window.sendPrivateMessage = async function(chatId, recipientId) {
   const input = document.getElementById('pmInput');
+  const sendBtn = document.getElementById('pmSendBtn');
   const text = input.value.trim();
 
-  if (!text) return;
+  if (!text || isSendingPM) return;
 
   try {
+    isSendingPM = true;
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+    }
+
     const timestamp = Date.now();
 
     // Send message
@@ -1935,6 +2183,12 @@ window.sendPrivateMessage = async function(chatId, recipientId) {
   } catch (error) {
     console.error('PM error:', error);
     showError('Failed to send message');
+  } finally {
+    isSendingPM = false;
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send';
+    }
   }
 };
 
@@ -2189,7 +2443,8 @@ async function loadInboxConversations() {
 
       return `
         <div class="inbox-item ${conv.unreadCount > 0 ? 'unread' : ''}"
-             onclick="openPrivateMessage('${conv.otherUserId}', '${escapeHtml(user?.username || 'Unknown')}')">
+             data-user-id="${conv.otherUserId}"
+             data-username="${escapeAttr(user?.username || 'Unknown')}">
           <div class="inbox-avatar">${avatarHTML}</div>
           <div class="inbox-content">
             <div class="inbox-header">
@@ -2204,14 +2459,20 @@ async function loadInboxConversations() {
       `;
     }).join('');
 
-    // Close inbox modal when opening a conversation
-    const inboxItems = inboxList.querySelectorAll('.inbox-item');
-    inboxItems.forEach(item => {
-      item.addEventListener('click', () => {
+    // Use event delegation instead of adding listeners to each item
+    // This prevents memory leaks and improves performance
+    inboxList.onclick = (e) => {
+      const item = e.target.closest('.inbox-item');
+      if (item) {
+        const userId = item.dataset.userId;
+        const username = item.dataset.username;
+        openPrivateMessage(userId, username);
+
+        // Close inbox modal
         const modal = document.getElementById('messagesInboxModal');
         if (modal) modal.remove();
-      });
-    });
+      }
+    };
 
   } catch (error) {
     console.error('Failed to load inbox:', error);
@@ -2318,25 +2579,34 @@ window.reportMessage = async function(messageId, messageText, authorId) {
     return;
   }
 
-  const reason = prompt('Please enter the reason for reporting this message:');
-  if (!reason) return;
+  // Use custom modal instead of prompt()
+  showPrompt(
+    'Please enter the reason for reporting this message:',
+    'Enter reason...',
+    async (reason) => {
+      if (!reason || !reason.trim()) {
+        showError('Please provide a reason for reporting');
+        return;
+      }
 
-  try {
-    await database.ref('reports').push({
-      messageId: messageId,
-      messageText: messageText,
-      authorId: authorId,
-      reportedBy: currentUser.uid,
-      reason: reason,
-      timestamp: Date.now(),
-      status: 'pending'
-    });
+      try {
+        await database.ref('reports').push({
+          messageId: messageId,
+          messageText: messageText,
+          authorId: authorId,
+          reportedBy: currentUser.uid,
+          reason: reason.trim(),
+          timestamp: Date.now(),
+          status: 'pending'
+        });
 
-    showSuccess('Report submitted. Thank you!');
-  } catch (error) {
-    console.error('Report error:', error);
-    showError('Failed to submit report');
-  }
+        showSuccess('Report submitted. Thank you!');
+      } catch (error) {
+        console.error('Report error:', error);
+        showError('Failed to submit report');
+      }
+    }
+  );
 };
 
 // ============================================
@@ -2383,9 +2653,8 @@ function initEmojiPicker() {
     emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'block' : 'none';
   });
 
-  // Search emojis
-  emojiSearch.addEventListener('input', (e) => {
-    const searchTerm = e.target.value.toLowerCase();
+  // Search emojis with debounce
+  const debouncedEmojiSearch = debounce((searchTerm) => {
     if (!searchTerm) {
       renderEmojis();
       return;
@@ -2396,6 +2665,10 @@ function initEmojiPicker() {
       return true; // Show all for now
     });
     renderEmojis(filtered);
+  }, 200);
+
+  emojiSearch.addEventListener('input', (e) => {
+    debouncedEmojiSearch(e.target.value.toLowerCase());
   });
 
   // Close picker when clicking outside
@@ -2710,12 +2983,18 @@ window.deleteBackup = function() {
   });
 };
 
-// Add event listeners to menu items
-document.querySelectorAll('.admin-menu-item').forEach(item => {
-  item.addEventListener('click', () => {
-    switchAdminTab(item.dataset.tab);
+// Use event delegation for admin menu items to prevent memory leaks
+// Only set up once
+const adminSidebar = document.querySelector('.admin-sidebar');
+if (adminSidebar && !adminSidebar.hasAttribute('data-delegation-setup')) {
+  adminSidebar.setAttribute('data-delegation-setup', 'true');
+  adminSidebar.addEventListener('click', (e) => {
+    const menuItem = e.target.closest('.admin-menu-item');
+    if (menuItem && menuItem.dataset.tab) {
+      switchAdminTab(menuItem.dataset.tab);
+    }
   });
-});
+}
 
 // ============================================
 // ADMIN MANAGEMENT
@@ -2784,6 +3063,7 @@ async function loadRoleStats() {
     };
 
     Object.values(users).forEach(user => {
+      if (!user) return; // Skip null/undefined users
       if (user.role === 'admin') stats.admin++;
       else stats.user++;
       if (user.banned) stats.banned++;
@@ -2889,12 +3169,13 @@ window.removeAdmin = async function(uid, username) {
 // Quick search users
 const quickSearchInput = document.getElementById('quickSearchUser');
 if (quickSearchInput) {
-  let searchTimeout;
+  // Use debounce utility function
+  const debouncedSearch = debounce((value) => {
+    quickSearchUsers(value);
+  }, 300);
+
   quickSearchInput.addEventListener('input', (e) => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      quickSearchUsers(e.target.value);
-    }, 300);
+    debouncedSearch(e.target.value);
   });
 }
 
@@ -3542,17 +3823,17 @@ async function loadUsers() {
 
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td>${user.username}</td>
-      <td>${user.email}</td>
-      <td><span class="badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}">${user.role === 'admin' ? '管理员' : '用户'}</span></td>
+      <td>${user && user.username ? user.username : 'Unknown'}</td>
+      <td>${user && user.email ? user.email : 'Unknown'}</td>
+      <td><span class="badge ${user && user.role === 'admin' ? 'badge-admin' : 'badge-user'}">${user && user.role === 'admin' ? '管理员' : '用户'}</span></td>
       <td>
-        ${user.banned ? '<span class="badge badge-danger">已封禁</span>' : ''}
-        ${user.muted ? '<span class="badge badge-warning">已禁言</span>' : ''}
-        ${!user.banned && !user.muted ? '<span class="badge badge-success">正常</span>' : ''}
+        ${user && user.banned ? '<span class="badge badge-danger">已封禁</span>' : ''}
+        ${user && user.muted ? '<span class="badge badge-warning">已禁言</span>' : ''}
+        ${!user || (!user.banned && !user.muted) ? '<span class="badge badge-success">正常</span>' : ''}
       </td>
       <td>
-        <button class="btn-small ${user.muted ? 'btn-success' : 'btn-warning'}" onclick="toggleMute('${userId}', ${!user.muted})">${user.muted ? '解除禁言' : '禁言'}</button>
-        <button class="btn-small ${user.banned ? 'btn-success' : 'btn-danger'}" onclick="toggleBan('${userId}', ${!user.banned})">${user.banned ? '解封' : '封禁'}</button>
+        <button class="btn-small ${user && user.muted ? 'btn-success' : 'btn-warning'}" onclick="toggleMute('${userId}', ${!user || !user.muted})">${user && user.muted ? '解除禁言' : '禁言'}</button>
+        <button class="btn-small ${user && user.banned ? 'btn-success' : 'btn-danger'}" onclick="toggleBan('${userId}', ${!user || !user.banned})">${user && user.banned ? '解封' : '封禁'}</button>
       </td>
     `;
 
@@ -3737,13 +4018,29 @@ async function renderAnnouncements() {
       ${filesPreview}
     `;
 
-    // Click to view details
-    card.addEventListener('click', () => {
-      showAnnouncementDetail(ann, userData);
-    });
+    // Store announcement data in dataset for event delegation
+    card.dataset.announcementId = ann.id || `ann_${index}`;
+    card.dataset.announcementData = JSON.stringify({ ann, userData });
 
     container.appendChild(card);
   });
+
+  // Use event delegation instead of adding listeners to each card
+  // This prevents memory leaks and improves performance
+  if (!container.hasAttribute('data-delegation-setup')) {
+    container.setAttribute('data-delegation-setup', 'true');
+    container.onclick = (e) => {
+      const card = e.target.closest('.announcement-card');
+      if (card && card.dataset.announcementData) {
+        try {
+          const { ann, userData } = JSON.parse(card.dataset.announcementData);
+          showAnnouncementDetail(ann, userData);
+        } catch (error) {
+          console.error('Failed to parse announcement data:', error);
+        }
+      }
+    };
+  }
 
   // Update button text
   if (toggleBtn) {
@@ -3839,9 +4136,26 @@ auth.onAuthStateChanged((user) => {
 
 let replyingTo = null;
 
+// Track ongoing like operations to prevent race conditions
+const likeOperations = new Set();
+
 // Toggle Like
 window.toggleLike = async function(messageId) {
+  if (!currentUser) {
+    showError('Please login to like messages');
+    return;
+  }
+
+  // Prevent duplicate operations
+  const operationKey = `${currentUser.uid}_${messageId}`;
+  if (likeOperations.has(operationKey)) {
+    devLog('Like operation already in progress');
+    return;
+  }
+
   try {
+    likeOperations.add(operationKey);
+
     const likeRef = database.ref(`messages/${messageId}/likes/${currentUser.uid}`);
     const snapshot = await likeRef.once('value');
 
@@ -3855,30 +4169,28 @@ window.toggleLike = async function(messageId) {
       // Unlike
       await likeRef.remove();
 
-      // Decrement author's total likes
+      // Decrement author's total likes using transaction (prevents race condition)
       if (message.userId) {
-        const userRef = database.ref(`users/${message.userId}`);
-        const userSnapshot = await userRef.once('value');
-        const userData = userSnapshot.val();
-        const currentLikes = userData?.totalLikes || 0;
-        await userRef.update({ totalLikes: Math.max(0, currentLikes - 1) });
+        await database.ref(`users/${message.userId}/totalLikes`).transaction((current) => {
+          return Math.max(0, (current || 0) - 1);
+        });
       }
     } else {
       // Like
       await likeRef.set(true);
 
-      // Increment author's total likes
+      // Increment author's total likes using transaction (prevents race condition)
       if (message.userId) {
-        const userRef = database.ref(`users/${message.userId}`);
-        const userSnapshot = await userRef.once('value');
-        const userData = userSnapshot.val();
-        const currentLikes = userData?.totalLikes || 0;
-        await userRef.update({ totalLikes: currentLikes + 1 });
+        await database.ref(`users/${message.userId}/totalLikes`).transaction((current) => {
+          return (current || 0) + 1;
+        });
       }
     }
   } catch (error) {
     console.error('Like error:', error);
     showError('Failed to like message');
+  } finally {
+    likeOperations.delete(operationKey);
   }
 };
 
@@ -4014,6 +4326,15 @@ async function sendMessage() {
   const userSnapshot = await database.ref(`users/${currentUser.uid}`).once('value');
   const userData = userSnapshot.val();
 
+  // Check if user data exists
+  if (!userData) {
+    showError('User data not found. Please try logging in again.');
+    sendMessageBtn.disabled = false;
+    sendMessageBtn.textContent = 'Send';
+    return;
+  }
+
+  // Check if user is muted
   if (userData.muted) {
     showError('You are muted and cannot send messages');
     sendMessageBtn.disabled = false;
@@ -4101,7 +4422,10 @@ async function sendMessage() {
 // Add event listeners for sendMessage (only once)
 sendMessageBtn.addEventListener('click', sendMessage);
 messageInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
+  // Check if button is disabled to prevent duplicate sends
+  if (e.key === 'Enter' && !sendMessageBtn.disabled) {
+    sendMessage();
+  }
 });
 
 // Upload file to base64 with image compression
@@ -4115,7 +4439,10 @@ async function uploadFileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
+    reader.onerror = (error) => {
+      console.error('FileReader error:', isProduction ? error.message : error);
+      reject(new Error('Failed to read file'));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -4156,10 +4483,13 @@ async function compressImage(file) {
         const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
         resolve(compressedDataUrl);
       };
-      img.onerror = reject;
+      img.onerror = () => reject(new Error('Failed to load image. The file may be corrupted.'));
       img.src = e.target.result;
     };
-    reader.onerror = reject;
+    reader.onerror = (error) => {
+      console.error('FileReader error:', isProduction ? error.message : error);
+      reject(new Error('Failed to read file'));
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -4598,7 +4928,10 @@ async function loadMoreMessages() {
 }
 
 // Scroll event listener for infinite scroll
-if (messagesContainer) {
+// Only add if not already added (prevent duplicate listeners)
+if (messagesContainer && !messagesContainer.hasAttribute('data-scroll-infinite-initialized')) {
+  messagesContainer.setAttribute('data-scroll-infinite-initialized', 'true');
+
   let scrollTimeout;
   messagesContainer.addEventListener('scroll', () => {
     // Debounce scroll event to prevent excessive calls
@@ -4830,6 +5163,9 @@ if (announcementImage) {
           <button class="remove-image-btn" onclick="removeAnnouncementImage()">✕</button>
         </div>
       `;
+    };
+    reader.onerror = () => {
+      showError('Failed to read announcement image file');
     };
     reader.readAsDataURL(file);
   });
@@ -5131,6 +5467,8 @@ if (isAdmin && announcementsManager) {
 // STATISTICS DASHBOARD
 // ============================================
 
+let statsInterval = null;
+
 async function loadStatistics() {
   try {
     // Total Users
@@ -5157,18 +5495,28 @@ async function loadStatistics() {
       }
     });
     document.getElementById('todayMessages').textContent = todayCount;
-
-    // Update stats every 30 seconds
-    setTimeout(loadStatistics, 30000);
   } catch (error) {
-    console.error('Failed to load statistics:', error);
+    console.error('Failed to load statistics:', isProduction ? error.message : error);
+  }
+}
+
+function startStatsUpdate() {
+  if (statsInterval) clearInterval(statsInterval);
+  loadStatistics(); // Load immediately
+  statsInterval = setInterval(loadStatistics, 30000); // Then every 30 seconds
+}
+
+function stopStatsUpdate() {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
   }
 }
 
 // Load stats when admin page is shown
 auth.onAuthStateChanged((user) => {
   if (user && isAdmin) {
-    loadStatistics();
+    startStatsUpdate();
   }
 });
 
@@ -5369,6 +5717,9 @@ if (avatarFileInput) {
       document.querySelectorAll('.color-option').forEach(opt => {
         opt.classList.remove('selected');
       });
+    };
+    reader.onerror = () => {
+      showError('Failed to read avatar file');
     };
     reader.readAsDataURL(file);
   });

@@ -2,116 +2,129 @@
   "rules": {
     ".read": false,
     ".write": false,
-    
+
     "users": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
+      ".indexOn": ["username", "email"],
       "$uid": {
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        "emailVerified": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "role": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "banned": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "muted": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
         "conversations": {
-          ".read": "auth != null && auth.uid === $uid",
+          ".read": "auth != null && auth.uid === $uid && auth.token.email_verified === true",
           "$chatId": {
-            ".write": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))"
+            ".write": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))"
           }
         }
       }
     },
-    
+
     "messages": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
       ".indexOn": ["timestamp", "pinned", "userId"],
       "$messageId": {
-        ".write": "auth != null && (!data.exists() || data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && auth.token.email_verified === true && (!data.exists() || data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".validate": "newData.hasChildren(['userId', 'text', 'timestamp'])"
       }
     },
     
     "announcements": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
       ".indexOn": ["timestamp"],
       "$announcementId": {
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         ".validate": "newData.hasChildren(['title', 'content', 'timestamp', 'authorId'])"
       }
     },
-    
+
     "privateMessages": {
       "$chatId": {
-        ".read": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
-        ".write": "auth != null && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
+        ".read": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
+        ".write": "auth != null && auth.token.email_verified === true && ($chatId.beginsWith(auth.uid + '_') || $chatId.endsWith('_' + auth.uid))",
         "$messageId": {
           ".validate": "newData.hasChildren(['from', 'to', 'text', 'timestamp']) && (newData.child('from').val() == auth.uid || newData.child('to').val() == auth.uid)"
         }
       }
     },
-    
+
     "notifications": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
+        ".read": "auth != null && auth.token.email_verified === true && auth.uid === $uid",
+        ".write": "auth != null && auth.token.email_verified === true"
       }
     },
-    
+
     "reactions": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
       "$messageId": {
-        ".write": "auth != null"
+        ".write": "auth != null && auth.token.email_verified === true"
       }
     },
-    
+
     "bookmarks": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && auth.token.email_verified === true && auth.uid === $uid",
+        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
       }
     },
-    
+
     "following": {
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
       }
     },
-    
+
     "followers": {
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null"
+        ".read": "auth != null && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email_verified === true"
       }
     },
-    
+
     "status": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
       }
     },
-    
+
     "reports": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && auth.token.email_verified === true"
     },
-    
+
     "adminLogs": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".read": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
-    
+
     "appVersion": {
-      ".read": "auth != null",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".read": "auth != null && auth.token.email_verified === true",
+      ".write": "auth != null && auth.token.email_verified === true && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
-    
+
     "typing": {
-      ".read": "auth != null",
+      ".read": "auth != null && auth.token.email_verified === true",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
       }
     },
 
     "checkIns": {
       "$uid": {
-        ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email_verified === true && auth.uid === $uid"
       }
     }
   }
