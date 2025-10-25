@@ -3816,12 +3816,124 @@ window.cleanupOnlineStatus = async function() {
   showCustomModal({
     icon: '🧹',
     title: '清理在线状态',
-    message: '这将删除所有已删除用户的在线状态数据。继续吗？',
+    message: '这将删除所有在线但用户数据不存在的状态。注意：如果用户在 users 节点中仍存在，则不会被清理。',
     type: 'confirm',
     confirmText: '开始清理',
     cancelText: '取消',
     onConfirm: async () => {
       await performOnlineStatusCleanup(true); // true = show messages
+    }
+  });
+};
+
+// Clean up users that exist in database but not in Authentication
+window.cleanupOrphanedUsers = async function() {
+  showCustomModal({
+    icon: '🗑️',
+    title: '清理孤立用户数据',
+    message: '这将显示所有在数据库中存在但可能已从 Authentication 删除的用户。你可以选择要删除的用户。',
+    type: 'confirm',
+    confirmText: '查看用户',
+    cancelText: '取消',
+    onConfirm: async () => {
+      try {
+        showSuccess('正在加载用户数据...');
+
+        // Get all users from database
+        const usersSnapshot = await database.ref('users').once('value');
+        const users = usersSnapshot.val() || {};
+
+        // Get all status entries
+        const statusSnapshot = await database.ref('status').once('value');
+        const statusData = statusSnapshot.val() || {};
+
+        // Create a list of users with their online status
+        const userList = Object.entries(users).map(([uid, userData]) => {
+          const isOnline = statusData[uid]?.online || false;
+          return {
+            uid,
+            username: userData.username || 'Unknown',
+            email: userData.email || 'No email',
+            isOnline,
+            createdAt: userData.createdAt || 0
+          };
+        });
+
+        // Sort by creation date (oldest first - likely to be test accounts)
+        userList.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Create a modal with user list
+        const userListHTML = userList.map(user => `
+          <div style="padding: 10px; border: 1px solid #ddd; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong>${user.username}</strong> ${user.isOnline ? '🟢' : '⚫'}
+              <br>
+              <small style="color: #666;">${user.email}</small>
+              <br>
+              <small style="color: #999;">UID: ${user.uid.substring(0, 8)}...</small>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deleteUserData('${user.uid}', '${user.username}')">删除</button>
+          </div>
+        `).join('');
+
+        // Show modal with user list
+        const modal = document.createElement('div');
+        modal.className = 'custom-modal-overlay show';
+        modal.innerHTML = `
+          <div class="custom-modal" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <div class="custom-modal-icon">🗑️</div>
+            <div class="custom-modal-title">用户数据管理</div>
+            <div class="custom-modal-message">
+              共 ${userList.length} 个用户。点击"删除"按钮可删除用户的所有数据（包括在线状态）。
+              <br><br>
+              🟢 = 在线 | ⚫ = 离线
+            </div>
+            <div style="margin: 20px 0; max-height: 400px; overflow-y: auto;">
+              ${userListHTML}
+            </div>
+            <div class="custom-modal-buttons">
+              <button class="custom-modal-btn custom-modal-btn-secondary" onclick="this.closest('.custom-modal-overlay').remove()">关闭</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(modal);
+
+      } catch (error) {
+        console.error('Failed to load users:', error);
+        showError('加载用户失败: ' + error.message);
+      }
+    }
+  });
+};
+
+// Delete user data completely
+window.deleteUserData = async function(uid, username) {
+  showCustomModal({
+    icon: '⚠️',
+    title: '确认删除',
+    message: `确定要删除用户 "${username}" 的所有数据吗？这将删除：\n- 用户资料\n- 在线状态\n- 打字状态\n\n注意：这不会删除 Firebase Authentication 中的账号！`,
+    type: 'confirm',
+    confirmText: '确认删除',
+    cancelText: '取消',
+    dangerButton: true,
+    onConfirm: async () => {
+      try {
+        // Delete user data
+        await database.ref(`users/${uid}`).remove();
+        await database.ref(`status/${uid}`).remove();
+        await database.ref(`typing/${uid}`).remove();
+        await database.ref(`userStatus/${uid}`).remove();
+
+        showSuccess(`✅ 已删除用户 "${username}" 的所有数据`);
+
+        // Close the user list modal and reopen it to refresh
+        document.querySelector('.custom-modal-overlay')?.remove();
+        setTimeout(() => window.cleanupOrphanedUsers(), 500);
+
+      } catch (error) {
+        console.error('Failed to delete user:', error);
+        showError('删除失败: ' + error.message);
+      }
     }
   });
 };
@@ -3841,15 +3953,24 @@ async function performOnlineStatusCleanup(showMessages = false) {
     const usersSnapshot = await database.ref('users').once('value');
     const validUserIds = new Set(Object.keys(usersSnapshot.val() || {}));
 
+    console.log(`📊 Total status entries: ${Object.keys(statusData).length}`);
+    console.log(`📊 Total valid users: ${validUserIds.size}`);
+
     let deletedCount = 0;
+    const deletedUsers = [];
 
     // Find and delete status entries for deleted users
     for (const uid in statusData) {
       if (!validUserIds.has(uid)) {
         try {
+          // Get username before deleting
+          const userSnapshot = await database.ref(`users/${uid}`).once('value');
+          const username = userSnapshot.val()?.username || uid;
+
           await database.ref(`status/${uid}`).remove();
           deletedCount++;
-          console.log(`🧹 Cleaned up status for deleted user: ${uid}`);
+          deletedUsers.push(username);
+          console.log(`🧹 Cleaned up status for deleted user: ${username} (${uid})`);
         } catch (error) {
           console.error(`Failed to delete status for ${uid}:`, error);
         }
@@ -3874,7 +3995,7 @@ async function performOnlineStatusCleanup(showMessages = false) {
 
     if (showMessages) {
       if (deletedCount > 0) {
-        showSuccess(`✅ 已清理 ${deletedCount} 个已删除用户的状态数据`);
+        showSuccess(`✅ 已清理 ${deletedCount} 个已删除用户的状态数据\n删除的用户: ${deletedUsers.join(', ')}`);
       } else {
         showSuccess('✅ 没有需要清理的数据');
       }

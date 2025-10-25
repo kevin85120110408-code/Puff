@@ -546,8 +546,11 @@
 <button class="btn btn-primary" onclick="migratePrivateMessages()" style="margin-top: 12px;">📨 迁移私信数据</button>
 <p style="font-size: 12px; color: #666; margin-top: 8px;">将现有私信迁移到新的对话列表结构（只需运行一次）</p>
 
-<button class="btn btn-primary" onclick="cleanupOnlineStatus()" style="margin-top: 12px;">🧹 清理在线状态</button>
-<p style="font-size: 12px; color: #666; margin-top: 8px;">删除已删除用户的在线状态数据</p>
+<button class="btn btn-primary" onclick="cleanupOrphanedUsers()" style="margin-top: 12px;">🗑️ 管理用户数据</button>
+<p style="font-size: 12px; color: #666; margin-top: 8px;">查看并删除数据库中的用户数据（包括在线状态）</p>
+
+<button class="btn btn-primary" onclick="cleanupOnlineStatus()" style="margin-top: 12px;">🧹 清理孤立的在线状态</button>
+<p style="font-size: 12px; color: #666; margin-top: 8px;">删除没有对应用户数据的在线状态</p>
 </div>
 </div>
 
