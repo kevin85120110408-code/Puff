@@ -1986,9 +1986,15 @@ async function loadInboxConversations() {
 function listenToInboxUpdates() {
   if (!currentUser) return;
 
-  // Listen for new messages
-  database.ref('privateMessages').on('child_added', updateInboxBadge);
-  database.ref('privateMessages').on('child_changed', updateInboxBadge);
+  // Listen for new messages - need to listen to all chat conversations
+  database.ref('privateMessages').on('value', () => {
+    updateInboxBadge();
+    // Refresh inbox list if modal is open
+    const inboxModal = document.getElementById('messagesInboxModal');
+    if (inboxModal) {
+      loadInboxConversations();
+    }
+  });
 }
 
 async function updateInboxBadge() {
