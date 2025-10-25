@@ -1986,14 +1986,28 @@ async function loadInboxConversations() {
     // Render conversations
     inboxList.innerHTML = sortedConversations.map((conv, index) => {
       const user = userData[index];
-      const avatar = user?.avatarUrl
-        ? `<img src="${user.avatarUrl}" alt="${user.username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`
-        : generateLetterAvatar(user?.username || 'U', user?.color);
+
+      // Generate avatar using getAvatar function
+      let avatarHTML = '';
+      if (user?.avatarUrl) {
+        avatarHTML = `<img src="${user.avatarUrl}" alt="${user.username}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+      } else {
+        // Generate letter avatar
+        const username = user?.username || 'Unknown';
+        const initials = username.substring(0, 2).toUpperCase();
+        const colors = [
+          '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+          '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788'
+        ];
+        const colorIndex = username.charCodeAt(0) % colors.length;
+        const color = user?.color || colors[colorIndex];
+        avatarHTML = `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: white; background: ${color}; border-radius: 50%;">${initials}</div>`;
+      }
 
       return `
         <div class="inbox-item ${conv.unreadCount > 0 ? 'unread' : ''}"
              onclick="openPrivateMessage('${conv.otherUserId}', '${escapeHtml(user?.username || 'Unknown')}')">
-          <div class="inbox-avatar" style="${!user?.avatarUrl ? `background: ${user?.color || '#666'};` : ''}">${avatar}</div>
+          <div class="inbox-avatar">${avatarHTML}</div>
           <div class="inbox-content">
             <div class="inbox-header">
               <span class="inbox-username">${escapeHtml(user?.username || 'Unknown')}</span>
@@ -2018,10 +2032,13 @@ async function loadInboxConversations() {
 
   } catch (error) {
     console.error('Failed to load inbox:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
     inboxList.innerHTML = `
       <div class="inbox-empty">
         <div class="inbox-empty-icon">⚠️</div>
         <div class="inbox-empty-text">Failed to load messages</div>
+        <div style="font-size: 12px; color: #999; margin-top: 8px;">${escapeHtml(error.message || 'Unknown error')}</div>
       </div>
     `;
   }
@@ -2980,6 +2997,102 @@ window.exportLogs = async function() {
   } catch (error) {
     showError('导出日志失败');
   }
+};
+
+// Recalculate user statistics (message count and total likes)
+window.recalculateUserStats = async function() {
+  showCustomModal({
+    icon: '🔄',
+    title: '重新计算用户统计',
+    message: '这将重新计算所有用户的消息数和点赞数。可能需要一些时间。继续吗？',
+    type: 'confirm',
+    confirmText: '开始计算',
+    cancelText: '取消',
+    onConfirm: async () => {
+      try {
+        // Show loading modal
+        const loadingModal = document.createElement('div');
+        loadingModal.className = 'modal active';
+        loadingModal.innerHTML = `
+          <div class="modal-content" style="text-align: center; padding: 40px;">
+            <div class="loading-spinner"></div>
+            <p style="margin-top: 20px;">正在计算用户统计数据...</p>
+            <p id="recalcProgress" style="font-size: 14px; color: #666; margin-top: 10px;">0 / 0 用户已处理</p>
+          </div>
+        `;
+        document.body.appendChild(loadingModal);
+
+        // Get all messages
+        const messagesSnapshot = await database.ref('messages').once('value');
+        const allMessages = messagesSnapshot.val() || {};
+
+        // Calculate stats for each user
+        const userStats = {};
+
+        // Count messages and likes for each user
+        for (const messageId in allMessages) {
+          const message = allMessages[messageId];
+          const userId = message.userId;
+
+          if (!userId) continue;
+
+          if (!userStats[userId]) {
+            userStats[userId] = {
+              messageCount: 0,
+              totalLikes: 0
+            };
+          }
+
+          // Count message
+          userStats[userId].messageCount++;
+
+          // Count likes
+          const likes = message.likes || {};
+          userStats[userId].totalLikes += Object.keys(likes).length;
+        }
+
+        // Update each user's data
+        const userIds = Object.keys(userStats);
+        const totalUsers = userIds.length;
+        let processedUsers = 0;
+
+        for (const userId of userIds) {
+          const stats = userStats[userId];
+          await database.ref(`users/${userId}`).update({
+            messageCount: stats.messageCount,
+            totalLikes: stats.totalLikes
+          });
+
+          processedUsers++;
+          const progressEl = document.getElementById('recalcProgress');
+          if (progressEl) {
+            progressEl.textContent = `${processedUsers} / ${totalUsers} 用户已处理`;
+          }
+        }
+
+        // Remove loading modal
+        loadingModal.remove();
+
+        showSuccess(`✅ 成功更新 ${totalUsers} 个用户的统计数据！`);
+
+        // Log admin action
+        await database.ref('adminLogs').push({
+          action: 'recalculate_stats',
+          admin: currentUser.uid,
+          timestamp: Date.now(),
+          details: `Recalculated stats for ${totalUsers} users`
+        });
+
+      } catch (error) {
+        console.error('Failed to recalculate stats:', error);
+        showError('计算统计数据失败: ' + error.message);
+
+        // Remove loading modal if it exists
+        const loadingModal = document.querySelector('.modal');
+        if (loadingModal) loadingModal.remove();
+      }
+    }
+  });
 };
 
 // Reset database

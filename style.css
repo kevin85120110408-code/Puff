@@ -2202,6 +2202,12 @@ input[type="checkbox"] {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    flex-direction: column;
+}
+
+.danger-zone p {
+    margin: 0;
+    padding: 0;
 }
 
 .btn-small {
