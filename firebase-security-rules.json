@@ -20,6 +20,12 @@
         "muted": {
           ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
         },
+        "deleted": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "deletedAt": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
         "conversations": {
           ".read": "auth != null && auth.uid === $uid",
           "$chatId": {
@@ -60,7 +66,7 @@
     "notifications": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null"
+        ".write": "auth != null || root.child('users').child(auth.uid).child('role').val() === 'admin'"
       }
     },
 
@@ -74,21 +80,21 @@
     "bookmarks": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
       }
     },
 
     "following": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
       }
     },
 
     "followers": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null"
+        ".write": "auth != null || root.child('users').child(auth.uid).child('role').val() === 'admin'"
       }
     },
 
@@ -131,7 +137,7 @@
     "checkIns": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
       }
     }
   }
