@@ -4616,6 +4616,12 @@ let announcementsListenerId = null;
 function loadAnnouncements() {
   const announcementsRef = database.ref('announcements');
 
+  // Remove existing listener to prevent duplicates
+  if (announcementsListenerId) {
+    removeManagedListener(announcementsListenerId);
+    announcementsListenerId = null;
+  }
+
   const announcementsCallback = (snapshot) => {
     const container = document.getElementById('announcementsList');
     const showMoreBtn = document.getElementById('showMoreAnnouncements');
@@ -5996,8 +6002,10 @@ window.removeAnnouncementFile = (index) => {
   announcementFolderInput.value = '';
 };
 
-// Post new announcement
-postAnnouncementBtn.addEventListener('click', async () => {
+// Post new announcement - Use once to prevent duplicate listeners
+let announcementPostHandler = null;
+
+async function postAnnouncement() {
   const title = announcementTitle?.value.trim() || 'Announcement';
   const text = announcementText.value.trim();
   const badge = announcementBadge?.value || 'Important';
@@ -6064,12 +6072,19 @@ postAnnouncementBtn.addEventListener('click', async () => {
 
     showSuccess('Announcement posted!');
   } catch (error) {
-    showError('Failed to post announcement');
+    console.error('Post announcement error:', error);
+    showError('Failed to post announcement: ' + (error.message || 'Unknown error'));
   } finally {
     postAnnouncementBtn.disabled = false;
     postAnnouncementBtn.textContent = '📢 发布公告';
   }
-});
+}
+
+// Add event listener only once
+if (postAnnouncementBtn && !announcementPostHandler) {
+  announcementPostHandler = postAnnouncement;
+  postAnnouncementBtn.addEventListener('click', announcementPostHandler);
+}
 
 // Store announcements manager listener ID
 let announcementsManagerListenerId = null;
@@ -6077,6 +6092,12 @@ let announcementsManagerListenerId = null;
 // Load announcements for management
 async function loadAnnouncementsManager() {
   if (!announcementsManager) return;
+
+  // Remove existing listener to prevent duplicates
+  if (announcementsManagerListenerId) {
+    removeManagedListener(announcementsManagerListenerId);
+    announcementsManagerListenerId = null;
+  }
 
   const announcementsManagerCallback = async (snapshot) => {
     announcementsManager.innerHTML = '';

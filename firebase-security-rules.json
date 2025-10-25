@@ -98,7 +98,37 @@
       ".indexOn": ["timestamp"],
       "$announcementId": {
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-        ".validate": "newData.hasChildren(['title', 'content', 'timestamp', 'authorId'])"
+        ".validate": "newData.hasChildren(['title', 'text', 'timestamp', 'author'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "text": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10000"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "author": {
+          ".validate": "newData.isString()"
+        },
+        "badge": {
+          ".validate": "newData.isString()"
+        },
+        "date": {
+          ".validate": "newData.isString()"
+        },
+        "imageUrl": {
+          ".validate": "newData.isString()"
+        },
+        "files": {
+          ".validate": "newData.hasChildren()"
+        },
+        "edited": {
+          ".validate": "newData.isBoolean()"
+        },
+        "editedAt": {
+          ".validate": "newData.isNumber()"
+        }
       }
     },
 
