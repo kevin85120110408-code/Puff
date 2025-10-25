@@ -404,8 +404,8 @@ function showEmailVerificationModal(user) {
 
   // Show modal
   devLog('📧 Showing verification modal...');
-  customModalOverlay.classList.add('active');
-  customModal.classList.add('active');
+  customModalOverlay.classList.add('show');
+  customModal.classList.add('show');
   devLog('✅ Modal should be visible now');
 
   // Start real-time verification check
@@ -426,8 +426,8 @@ function showEmailVerificationModal(user) {
 
         // Close modal and show success
         setTimeout(() => {
-          customModalOverlay.classList.remove('active');
-          customModal.classList.remove('active');
+          customModalOverlay.classList.remove('show');
+          customModal.classList.remove('show');
           showSuccess('Registration successful! Welcome to the forum!');
 
           // Trigger auth state change to load the forum
@@ -466,8 +466,8 @@ function showEmailVerificationModal(user) {
         // Clear the waiting flag
         isWaitingForEmailVerification = false;
 
-        customModalOverlay.classList.remove('active');
-        customModal.classList.remove('active');
+        customModalOverlay.classList.remove('show');
+        customModal.classList.remove('show');
         showSuccess('Registration successful! Welcome to the forum!');
 
         // Reload page to enter forum
