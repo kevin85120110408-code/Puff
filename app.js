@@ -606,7 +606,7 @@ function updateUnreadCount() {
   }
 }
 
-function loadMessages() {
+async function loadMessages() {
   const messagesRef = database.ref('messages').limitToLast(50);
 
   // Reset infinite scroll state
@@ -614,15 +614,48 @@ function loadMessages() {
   loadedMessages.clear();
   oldestMessageKey = null;
 
-  // Clear loading text
+  // Show loading indicator
   const loadingText = messagesContainer.querySelector('.loading-text');
-  if (loadingText) {
-    loadingText.remove();
+  if (!loadingText) {
+    const loading = document.createElement('div');
+    loading.className = 'loading-text';
+    loading.textContent = 'Loading messages...';
+    messagesContainer.appendChild(loading);
   }
 
   // Set lastMessageTime to now to prevent treating existing messages as new
   lastMessageTime = Date.now();
 
+  try {
+    // Pre-fetch all messages first to batch load user data
+    const initialSnapshot = await messagesRef.once('value');
+    const userIds = new Set();
+
+    initialSnapshot.forEach(child => {
+      const msg = child.val();
+      if (msg.userId) {
+        userIds.add(msg.userId);
+      }
+    });
+
+    // Batch load all user data
+    await Promise.all(Array.from(userIds).map(userId => getUserData(userId)));
+
+    // Remove loading indicator
+    const finalLoadingText = messagesContainer.querySelector('.loading-text');
+    if (finalLoadingText) {
+      finalLoadingText.remove();
+    }
+  } catch (error) {
+    console.error('Error pre-loading user data:', error);
+    // Continue anyway
+    const errorLoadingText = messagesContainer.querySelector('.loading-text');
+    if (errorLoadingText) {
+      errorLoadingText.remove();
+    }
+  }
+
+  // Now set up real-time listener
   messagesRef.on('child_added', async (snapshot) => {
     const messageId = snapshot.key;
 
@@ -1518,9 +1551,8 @@ window.showUserProfile = async function(userId) {
     document.body.appendChild(loadingModal);
 
     // Parallel queries for better performance
-    const [userSnapshot, messagesSnapshot, followersSnapshot, followingSnapshot, checkInSnapshot] = await Promise.all([
+    const [userSnapshot, followersSnapshot, followingSnapshot, checkInSnapshot] = await Promise.all([
       database.ref(`users/${userId}`).once('value'),
-      database.ref('messages').orderByChild('userId').equalTo(userId).limitToLast(100).once('value'), // Limit to last 100 messages
       database.ref(`followers/${userId}`).once('value'),
       database.ref(`following/${userId}`).once('value'),
       database.ref(`checkIns/${userId}`).once('value')
@@ -1534,15 +1566,12 @@ window.showUserProfile = async function(userId) {
       return;
     }
 
-    // Get user stats
-    const messageCount = messagesSnapshot.numChildren();
+    // Use cached message count from user data instead of querying all messages
+    const messageCount = userData.messageCount || 0;
 
-    // Get total likes received
-    let totalLikes = 0;
-    messagesSnapshot.forEach(msgSnap => {
-      const likes = msgSnap.val().likes || {};
-      totalLikes += Object.keys(likes).length;
-    });
+    // Use cached total likes from user data (we'll need to add this field)
+    // For now, just show 0 or calculate it lazily
+    const totalLikes = userData.totalLikes || 0;
 
     // Get followers/following count
     const followersCount = followersSnapshot.numChildren();
@@ -1901,7 +1930,10 @@ async function loadInboxConversations() {
 
       // Get last message
       const messagesList = Object.values(messages);
+      if (messagesList.length === 0) continue; // Skip empty conversations
+
       const lastMessage = messagesList[messagesList.length - 1];
+      if (!lastMessage || !lastMessage.timestamp) continue; // Skip invalid messages
 
       // Count unread messages
       const unreadCount = messagesList.filter(msg =>
@@ -1932,12 +1964,24 @@ async function loadInboxConversations() {
       return;
     }
 
-    // Load user data for all conversations
-    const userDataPromises = sortedConversations.map(conv =>
-      database.ref(`users/${conv.otherUserId}`).once('value')
-    );
-    const userSnapshots = await Promise.all(userDataPromises);
-    const userData = userSnapshots.map(snap => snap.val());
+    // Load user data for all conversations - use cache
+    const userData = await Promise.all(sortedConversations.map(async (conv) => {
+      // Check cache first
+      if (userCache.has(conv.otherUserId)) {
+        return userCache.get(conv.otherUserId);
+      }
+
+      // If not in cache, fetch from database
+      const userSnapshot = await database.ref(`users/${conv.otherUserId}`).once('value');
+      const data = userSnapshot.val();
+
+      // Add to cache
+      if (data) {
+        userCache.set(conv.otherUserId, data);
+      }
+
+      return data;
+    }));
 
     // Render conversations
     inboxList.innerHTML = sortedConversations.map((conv, index) => {
@@ -1956,7 +2000,7 @@ async function loadInboxConversations() {
               <span class="inbox-time">${formatTime(conv.timestamp)}</span>
             </div>
             <div class="inbox-preview">
-              ${conv.lastMessage.from === currentUser.uid ? 'You: ' : ''}${escapeHtml(conv.lastMessage.text)}
+              ${conv.lastMessage.from === currentUser.uid ? 'You: ' : ''}${escapeHtml(conv.lastMessage.text || 'No message')}
             </div>
           </div>
         </div>
@@ -1986,15 +2030,22 @@ async function loadInboxConversations() {
 function listenToInboxUpdates() {
   if (!currentUser) return;
 
-  // Listen for new messages - need to listen to all chat conversations
-  database.ref('privateMessages').on('value', () => {
+  // Listen for changes in private messages more efficiently
+  // Use child_added and child_changed on the top level
+  const pmRef = database.ref('privateMessages');
+
+  const updateInbox = () => {
     updateInboxBadge();
     // Refresh inbox list if modal is open
     const inboxModal = document.getElementById('messagesInboxModal');
     if (inboxModal) {
       loadInboxConversations();
     }
-  });
+  };
+
+  // Listen to each chat conversation
+  pmRef.on('child_added', updateInbox);
+  pmRef.on('child_changed', updateInbox);
 }
 
 async function updateInboxBadge() {
@@ -3353,10 +3404,36 @@ window.toggleLike = async function(messageId) {
     const likeRef = database.ref(`messages/${messageId}/likes/${currentUser.uid}`);
     const snapshot = await likeRef.once('value');
 
+    // Get message to find author
+    const messageSnapshot = await database.ref(`messages/${messageId}`).once('value');
+    const message = messageSnapshot.val();
+
+    if (!message) return;
+
     if (snapshot.exists()) {
+      // Unlike
       await likeRef.remove();
+
+      // Decrement author's total likes
+      if (message.userId) {
+        const userRef = database.ref(`users/${message.userId}`);
+        const userSnapshot = await userRef.once('value');
+        const userData = userSnapshot.val();
+        const currentLikes = userData?.totalLikes || 0;
+        await userRef.update({ totalLikes: Math.max(0, currentLikes - 1) });
+      }
     } else {
+      // Like
       await likeRef.set(true);
+
+      // Increment author's total likes
+      if (message.userId) {
+        const userRef = database.ref(`users/${message.userId}`);
+        const userSnapshot = await userRef.once('value');
+        const userData = userSnapshot.val();
+        const currentLikes = userData?.totalLikes || 0;
+        await userRef.update({ totalLikes: currentLikes + 1 });
+      }
     }
   } catch (error) {
     console.error('Like error:', error);
@@ -5419,16 +5496,31 @@ async function updateOnlineUsersList(statusSnapshot) {
 
   console.log('👥 Found online users:', onlineUsers.length);
 
-  // Get user data for online users
-  const userDataPromises = onlineUsers.map(async (user) => {
+  // Get user data for online users - use cache first
+  const usersData = await Promise.all(onlineUsers.map(async (user) => {
+    // Check cache first
+    if (userCache.has(user.uid)) {
+      return {
+        uid: user.uid,
+        ...userCache.get(user.uid)
+      };
+    }
+
+    // If not in cache, fetch from database
     const userSnapshot = await database.ref(`users/${user.uid}`).once('value');
+    const userData = userSnapshot.val();
+
+    // Add to cache
+    if (userData) {
+      userCache.set(user.uid, userData);
+    }
+
     return {
       uid: user.uid,
-      ...userSnapshot.val()
+      ...userData
     };
-  });
+  }));
 
-  const usersData = await Promise.all(userDataPromises);
   console.log('📊 User data loaded:', usersData);
 
   // Wait for fade out animation if it's first load
