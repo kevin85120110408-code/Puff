@@ -812,6 +812,11 @@ registerBtn.addEventListener('click', async () => {
       return;
     }
 
+    // ⚠️ CRITICAL: Set flag BEFORE creating user to prevent race condition
+    // auth.onAuthStateChanged fires immediately when user is created
+    isWaitingForEmailVerification = true;
+    devLog('🚫 Set isWaitingForEmailVerification = true (BEFORE user creation)');
+
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
@@ -833,10 +838,6 @@ registerBtn.addEventListener('click', async () => {
     });
 
     devLog('📧 Verification email sent');
-
-    // Set flag to prevent auto-login
-    isWaitingForEmailVerification = true;
-    devLog('🚫 Set isWaitingForEmailVerification = true');
 
     // Show verification waiting modal with real-time detection
     devLog('📧 Calling showEmailVerificationModal...');
