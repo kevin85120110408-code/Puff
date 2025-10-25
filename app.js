@@ -1,4 +1,13 @@
-console.log('🔥🔥🔥 APP.JS LOADED - VERSION 3.1 🔥🔥🔥');
+// Production mode detection
+const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+// Conditional logging - only log in development
+const devLog = isProduction ? () => {} : console.log.bind(console);
+const devTime = isProduction ? () => {} : console.time.bind(console);
+const devTimeEnd = isProduction ? () => {} : console.timeEnd.bind(console);
+
+devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.2 🔥🔥🔥');
+devLog('Production mode:', isProduction);
 
 // Global state
 let currentUser = null;
@@ -14,6 +23,33 @@ const CLEANUP_KEEP = 250; // 清理后保留最新的消息数量
 // Mention autocomplete
 let allUsers = [];
 let mentionStartPos = -1;
+
+// Listener management to prevent memory leaks
+const activeListeners = new Map();
+let listenerIdCounter = 0;
+
+function addManagedListener(ref, eventType, callback, description = '') {
+  const listenerId = `listener_${listenerIdCounter++}`;
+  ref.on(eventType, callback);
+  activeListeners.set(listenerId, { ref, eventType, callback, description });
+  return listenerId;
+}
+
+function removeManagedListener(listenerId) {
+  const listener = activeListeners.get(listenerId);
+  if (listener) {
+    listener.ref.off(listener.eventType, listener.callback);
+    activeListeners.delete(listenerId);
+  }
+}
+
+function cleanupAllListeners() {
+  devLog(`🧹 Cleaning up ${activeListeners.size} active listeners`);
+  activeListeners.forEach(({ ref, eventType, callback }) => {
+    ref.off(eventType, callback);
+  });
+  activeListeners.clear();
+}
 
 // DOM Elements
 const authPage = document.getElementById('authPage');
@@ -188,12 +224,20 @@ function showCustomModal(options) {
     }
   };
   document.addEventListener('keydown', escapeHandler);
+
+  // Store escape handler for cleanup
+  customModalOverlay.escapeHandler = escapeHandler;
 }
 
 function hideCustomModal() {
   const customModalOverlay = document.getElementById('customModalOverlay');
   if (customModalOverlay) {
     customModalOverlay.classList.remove('show');
+    // FIXED: Clean up escape handler when modal is closed
+    if (customModalOverlay.escapeHandler) {
+      document.removeEventListener('keydown', customModalOverlay.escapeHandler);
+      customModalOverlay.escapeHandler = null;
+    }
   }
 }
 
@@ -288,7 +332,7 @@ auth.onAuthStateChanged(async (user) => {
 
     // Real-time listener for user status changes
     let isFirstLoad = true;
-    userStatusListener = userRef.on('value', async (snapshot) => {
+    const userStatusCallback = async (snapshot) => {
       // Skip the first load (initial data)
       if (isFirstLoad) {
         isFirstLoad = false;
@@ -298,14 +342,10 @@ auth.onAuthStateChanged(async (user) => {
       const userData = snapshot.val();
       if (userData?.banned) {
         showError('Your account has been banned');
-        // Remove listener before signing out
-        if (userStatusListener) {
-          userRef.off('value', userStatusListener);
-          userStatusListener = null;
-        }
         await auth.signOut();
       }
-    });
+    };
+    addManagedListener(userRef, 'value', userStatusCallback, 'user-status');
 
     console.log('✅ User authenticated, setting up forum...');
     showPage(forumPage);
@@ -499,6 +539,9 @@ registerBtn.addEventListener('click', async () => {
 });
 
 logoutBtn.addEventListener('click', async () => {
+  // Clean up all listeners before logout
+  cleanupAllListeners();
+  cleanupActivityListeners();
   await auth.signOut();
 });
 
@@ -518,15 +561,16 @@ function updateOnlineStatus(online) {
       online: false,
       lastSeen: Date.now()
     });
-    
+
     // Update online count
-    database.ref('status').on('value', (snapshot) => {
+    const onlineCountCallback = (snapshot) => {
       let count = 0;
       snapshot.forEach((child) => {
         if (child.val().online) count++;
       });
       onlineCount.textContent = `${count} online`;
-    });
+    };
+    addManagedListener(database.ref('status'), 'value', onlineCountCallback, 'online-count');
   } else {
     userStatusRef.set({
       online: false,
@@ -629,9 +673,9 @@ async function loadMessages() {
 
   try {
     // Pre-fetch all messages first to batch load user data
-    console.time('⏱️ Fetch messages');
+    devTime('⏱️ Fetch messages');
     const initialSnapshot = await messagesRef.once('value');
-    console.timeEnd('⏱️ Fetch messages');
+    devTimeEnd('⏱️ Fetch messages');
 
     const messages = [];
     const userIds = new Set();
@@ -644,12 +688,12 @@ async function loadMessages() {
       }
     });
 
-    console.log(`📊 Found ${messages.length} messages from ${userIds.size} users`);
+    devLog(`📊 Found ${messages.length} messages from ${userIds.size} users`);
 
     // Batch load all user data
-    console.time('⏱️ Load user data');
+    devTime('⏱️ Load user data');
     await Promise.all(Array.from(userIds).map(userId => getUserData(userId)));
-    console.timeEnd('⏱️ Load user data');
+    devTimeEnd('⏱️ Load user data');
 
     // Remove loading indicator
     const finalLoadingText = messagesContainer.querySelector('.loading-text');
@@ -658,7 +702,7 @@ async function loadMessages() {
     }
 
     // Batch render all messages at once using DocumentFragment
-    console.time('⏱️ Render messages');
+    devTime('⏱️ Render messages');
     const fragment = document.createDocumentFragment();
 
     for (const { key, val } of messages) {
@@ -676,26 +720,12 @@ async function loadMessages() {
 
       // Set up listeners
       listenToReactions(key);
-      observeMessageVisibility(messageEl, key, val.userId);
+      observeMessageVisibility(messageEl, val.userId);
     }
 
     // Append all messages at once
     messagesContainer.appendChild(fragment);
-    console.timeEnd('⏱️ Render messages');
-
-    // Set up online status listeners for unique users only (not per message)
-    console.time('⏱️ Setup status listeners');
-    Array.from(userIds).forEach(userId => {
-      database.ref(`status/${userId}/online`).on('value', (statusSnapshot) => {
-        const onlineDots = document.querySelectorAll(`#online-${userId}`);
-        onlineDots.forEach(dot => {
-          if (dot) {
-            dot.style.display = statusSnapshot.val() ? 'block' : 'none';
-          }
-        });
-      });
-    });
-    console.timeEnd('⏱️ Setup status listeners');
+    devTimeEnd('⏱️ Render messages');
 
     // Scroll to bottom
     setTimeout(() => {
@@ -718,7 +748,7 @@ async function loadMessages() {
   }
 
   // Now set up real-time listener for NEW messages only
-  messagesRef.on('child_added', async (snapshot) => {
+  const childAddedCallback = async (snapshot) => {
     const messageId = snapshot.key;
 
     if (loadedMessages.has(messageId)) {
@@ -797,11 +827,10 @@ async function loadMessages() {
       <div class="message-container-flex">
         <div class="message-avatar-wrapper">
           <div class="message-avatar">${avatar}</div>
-          <div class="user-online-dot" id="online-${msg.userId}" style="display: none;"></div>
         </div>
         <div class="message-content-wrapper">
           <div class="message-header">
-            <span class="${authorClass} clickable-username" onclick="showUserProfile('${msg.userId}')" title="View profile">${userData?.username || 'Unknown'}</span>
+            <span class="${authorClass} clickable-username" onclick="showUserProfile('${escapeAttr(msg.userId)}')" title="View profile">${userData?.username || 'Unknown'}</span>
             <span class="user-level-badge level-${userLevel.level}">${userLevel.name}</span>
             <span class="message-time">${formatTime(msg.timestamp)} ${isEdited}</span>
           </div>
@@ -880,36 +909,36 @@ async function loadMessages() {
       }, 100);
     }
 
-    // Listen for read status updates
-    database.ref(`messages/${messageId}/readBy`).on('value', (readSnapshot) => {
+    // Listen for read status updates (managed)
+    const readCallback = (readSnapshot) => {
       updateReadStatus(messageId, readSnapshot.val(), msg.userId);
-    });
+    };
+    addManagedListener(
+      database.ref(`messages/${messageId}/readBy`),
+      'value',
+      readCallback,
+      `readBy-${messageId}`
+    );
 
     // Listen for reactions (real-time)
     listenToReactions(messageId);
 
-    // Listen for user online status
-    database.ref(`status/${msg.userId}/online`).on('value', (statusSnapshot) => {
-      const onlineDot = document.getElementById(`online-${msg.userId}`);
-      if (onlineDot) {
-        onlineDot.style.display = statusSnapshot.val() ? 'block' : 'none';
-      }
-    });
-
     // Mark message as read when it becomes visible
-    observeMessageVisibility(messageEl, messageId, msg.userId);
-  });
+    observeMessageVisibility(messageEl, msg.userId);
+  };
+  addManagedListener(messagesRef, 'child_added', childAddedCallback, 'messages-child-added');
 
-  messagesRef.on('child_removed', (snapshot) => {
+  const childRemovedCallback = (snapshot) => {
     const messageId = snapshot.key;
     loadedMessages.delete(messageId);
     const messageEl = messagesContainer.querySelector(`[data-message-id="${messageId}"]`);
     if (messageEl) {
       messageEl.remove();
     }
-  });
+  };
+  addManagedListener(messagesRef, 'child_removed', childRemovedCallback, 'messages-child-removed');
 
-  messagesRef.on('child_changed', async (snapshot) => {
+  const childChangedCallback = async (snapshot) => {
     const messageId = snapshot.key;
     const msg = snapshot.val();
     const userData = await getUserData(msg.userId);
@@ -948,7 +977,6 @@ async function loadMessages() {
         <div class="message-container-flex">
           <div class="message-avatar-wrapper">
             <div class="message-avatar">${avatar}</div>
-            <div class="user-online-dot" id="online-${msg.userId}" style="display: none;"></div>
           </div>
           <div class="message-content-wrapper">
             <div class="message-header">
@@ -1007,15 +1035,10 @@ async function loadMessages() {
         }
       }
 
-      // Re-attach online status listener
-      database.ref(`status/${msg.userId}/online`).on('value', (statusSnapshot) => {
-        const onlineDot = document.getElementById(`online-${msg.userId}`);
-        if (onlineDot) {
-          onlineDot.style.display = statusSnapshot.val() ? 'block' : 'none';
-        }
-      });
+      // Online status indicators removed for performance
     }
-  });
+  };
+  addManagedListener(messagesRef, 'child_changed', childChangedCallback, 'messages-child-changed');
 }
 
 // ============================================
@@ -1352,9 +1375,15 @@ window.addReaction = async function(messageId, emoji) {
 
 // Listen to reactions in real-time
 function listenToReactions(messageId) {
-  database.ref(`reactions/${messageId}`).on('value', (snapshot) => {
+  const reactionsCallback = (snapshot) => {
     updateReactionDisplay(messageId, snapshot.val());
-  });
+  };
+  addManagedListener(
+    database.ref(`reactions/${messageId}`),
+    'value',
+    reactionsCallback,
+    `reactions-${messageId}`
+  );
 }
 
 // Update reaction display
@@ -1514,10 +1543,18 @@ function resetActivityTimer() {
   }, 5 * 60 * 1000); // 5 minutes
 }
 
-// Listen to user activity
-['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(event => {
+// Listen to user activity - Store for cleanup
+const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+activityEvents.forEach(event => {
   document.addEventListener(event, resetActivityTimer, true);
 });
+
+// Cleanup function for activity listeners
+function cleanupActivityListeners() {
+  activityEvents.forEach(event => {
+    document.removeEventListener(event, resetActivityTimer, true);
+  });
+}
 
 // Set offline when leaving
 window.addEventListener('beforeunload', () => {
@@ -1600,6 +1637,8 @@ if (darkMode) {
 window.showUserProfile = async function(userId) {
   if (!userId) return;
 
+  console.time('⏱️ Load profile');
+
   try {
     // Show loading indicator
     const loadingModal = document.createElement('div');
@@ -1613,12 +1652,14 @@ window.showUserProfile = async function(userId) {
     document.body.appendChild(loadingModal);
 
     // Parallel queries for better performance
+    console.time('⏱️ Fetch profile data');
     const [userSnapshot, followersSnapshot, followingSnapshot, checkInSnapshot] = await Promise.all([
       database.ref(`users/${userId}`).once('value'),
       database.ref(`followers/${userId}`).once('value'),
       database.ref(`following/${userId}`).once('value'),
       database.ref(`checkIns/${userId}`).once('value')
     ]);
+    console.timeEnd('⏱️ Fetch profile data');
 
     const userData = userSnapshot.val();
 
@@ -1672,6 +1713,8 @@ window.showUserProfile = async function(userId) {
 
     // Remove loading modal
     loadingModal.remove();
+
+    console.timeEnd('⏱️ Load profile');
 
     // Show profile modal
     const modal = document.createElement('div');
@@ -1892,13 +1935,16 @@ window.sendPrivateMessage = async function(chatId, recipientId) {
   }
 };
 
+// Store current PM listener ID for cleanup
+let currentPMListenerId = null;
+
 function loadPrivateMessages(chatId) {
   const container = document.getElementById('pmMessages');
   if (!container) return;
 
   let isInitialLoad = true;
 
-  database.ref(`privateMessages/${chatId}`).on('child_added', async (snapshot) => {
+  const pmCallback = async (snapshot) => {
     const msg = snapshot.val();
     const isOwn = msg.from === currentUser.uid;
 
@@ -1931,7 +1977,14 @@ function loadPrivateMessages(chatId) {
       showToast(`💬 New message from ${userData?.username || 'Unknown'}`);
       playNotificationSound();
     }
-  });
+  };
+
+  currentPMListenerId = addManagedListener(
+    database.ref(`privateMessages/${chatId}`),
+    'child_added',
+    pmCallback,
+    `pm-${chatId}`
+  );
 
   // After a short delay, mark initial load as complete
   setTimeout(() => {
@@ -2142,9 +2195,8 @@ async function loadInboxConversations() {
 function listenToInboxUpdates() {
   if (!currentUser) return;
 
-  // Listen for changes in private messages more efficiently
-  // Use child_added and child_changed on the top level
-  const pmRef = database.ref('privateMessages');
+  // Listen for changes in user's conversation list
+  const conversationsRef = database.ref(`users/${currentUser.uid}/conversations`);
 
   const updateInbox = () => {
     updateInboxBadge();
@@ -2155,31 +2207,39 @@ function listenToInboxUpdates() {
     }
   };
 
-  // Listen to each chat conversation
-  pmRef.on('child_added', updateInbox);
-  pmRef.on('child_changed', updateInbox);
+  // Listen to conversation list changes (managed)
+  addManagedListener(conversationsRef, 'child_added', updateInbox, 'conversations-added');
+  addManagedListener(conversationsRef, 'child_changed', updateInbox, 'conversations-changed');
 }
 
 async function updateInboxBadge() {
   if (!currentUser) return;
 
   try {
-    const messagesSnapshot = await database.ref('privateMessages').once('value');
-    const allMessages = messagesSnapshot.val() || {};
+    // Get user's conversation list
+    const conversationsSnapshot = await database.ref(`users/${currentUser.uid}/conversations`).once('value');
+    const conversations = conversationsSnapshot.val() || {};
 
     let totalUnread = 0;
 
-    for (const chatId in allMessages) {
-      const messages = allMessages[chatId];
-      const userIds = chatId.split('_');
+    // Check each conversation for unread messages - OPTIMIZED: Use Promise.all
+    const chatIds = Object.keys(conversations);
+    const messagePromises = chatIds.map(chatId =>
+      database.ref(`privateMessages/${chatId}`).once('value')
+        .then(snapshot => ({ chatId, messages: snapshot.val() || {} }))
+        .catch(error => {
+          console.error(`Error reading chat ${chatId}:`, error);
+          return { chatId, messages: {} };
+        })
+    );
 
-      if (!userIds.includes(currentUser.uid)) continue;
+    const results = await Promise.all(messagePromises);
 
+    for (const { messages } of results) {
       const messagesList = Object.values(messages);
       const unreadCount = messagesList.filter(msg =>
         msg.to === currentUser.uid && !msg.read
       ).length;
-
       totalUnread += unreadCount;
     }
 
@@ -2254,7 +2314,6 @@ function initEmojiPicker() {
   const emojiPicker = document.getElementById('emojiPicker');
   const emojiPickerBody = document.getElementById('emojiPickerBody');
   const emojiSearch = document.getElementById('emojiSearch');
-  const messageInput = document.getElementById('messageInput');
 
   if (!emojiPickerBtn || !emojiPicker) return;
 
@@ -2281,7 +2340,7 @@ function initEmojiPicker() {
       return;
     }
 
-    const filtered = allEmojis.filter(emoji => {
+    const filtered = allEmojis.filter(() => {
       // Simple search - you can enhance this
       return true; // Show all for now
     });
@@ -2315,7 +2374,7 @@ window.insertEmoji = function(emoji) {
 function listenToNotifications() {
   if (!currentUser) return;
 
-  database.ref(`notifications/${currentUser.uid}`).on('child_added', async (snapshot) => {
+  const notificationCallback = async (snapshot) => {
     const notification = snapshot.val();
     if (notification.read) return;
 
@@ -2345,7 +2404,14 @@ function listenToNotifications() {
     setTimeout(() => {
       database.ref(`notifications/${currentUser.uid}/${snapshot.key}`).update({ read: true });
     }, 3000);
-  });
+  };
+
+  addManagedListener(
+    database.ref(`notifications/${currentUser.uid}`),
+    'child_added',
+    notificationCallback,
+    'notifications'
+  );
 }
 
 function showNotification(message) {
@@ -2523,10 +2589,11 @@ window.executeBatchAction = function() {
 
 // Create Backup
 window.createBackup = function() {
-  const includeUsers = document.getElementById('backupUsers').checked;
-  const includeMessages = document.getElementById('backupMessages').checked;
-  const includeAnnouncements = document.getElementById('backupAnnouncements').checked;
-  const includeSettings = document.getElementById('backupSettings').checked;
+  // Get backup options (currently not used, but kept for future implementation)
+  // const includeUsers = document.getElementById('backupUsers').checked;
+  // const includeMessages = document.getElementById('backupMessages').checked;
+  // const includeAnnouncements = document.getElementById('backupAnnouncements').checked;
+  // const includeSettings = document.getElementById('backupSettings').checked;
 
   showCustomModal({
     icon: '💾',
@@ -2547,7 +2614,7 @@ window.downloadBackup = function(backupId) {
 };
 
 // Restore Backup
-window.restoreBackup = function(backupId) {
+window.restoreBackup = function() {
   showCustomModal({
     icon: '⚠️',
     title: '恢复备份',
@@ -2570,7 +2637,7 @@ window.restoreBackup = function(backupId) {
 };
 
 // Delete Backup
-window.deleteBackup = function(backupId) {
+window.deleteBackup = function() {
   showCustomModal({
     icon: '🗑️',
     title: '删除备份',
@@ -2612,7 +2679,7 @@ async function loadAdminsList() {
     const usersSnapshot = await database.ref('users').once('value');
     const users = usersSnapshot.val() || {};
 
-    const admins = Object.entries(users).filter(([uid, user]) => user.role === 'admin');
+    const admins = Object.entries(users).filter(([, user]) => user.role === 'admin');
 
     if (admins.length === 0) {
       adminsList.innerHTML = '<div class="loading-text">没有管理员</div>';
@@ -2703,7 +2770,7 @@ window.promoteToAdmin = async function() {
         const usersSnapshot = await database.ref('users').once('value');
         const users = usersSnapshot.val() || {};
 
-        const userEntry = Object.entries(users).find(([uid, user]) => user.email === email);
+        const userEntry = Object.entries(users).find(([, user]) => user.email === email);
 
         if (!userEntry) {
           showError('未找到该用户');
@@ -2793,7 +2860,7 @@ async function quickSearchUsers(query) {
     const usersSnapshot = await database.ref('users').once('value');
     const users = usersSnapshot.val() || {};
 
-    const results = Object.entries(users).filter(([uid, user]) => {
+    const results = Object.entries(users).filter(([, user]) => {
       const searchStr = query.toLowerCase();
       return user.username?.toLowerCase().includes(searchStr) ||
              user.email?.toLowerCase().includes(searchStr);
@@ -2968,14 +3035,19 @@ async function loadMessagesAdmin() {
       return;
     }
 
-    // Load user data for all messages
+    // Load user data for all messages - OPTIMIZED: Use Promise.all
     const userIds = [...new Set(messages.map(msg => msg.userId))];
     const userDataMap = {};
 
-    for (const userId of userIds) {
-      const userSnapshot = await database.ref(`users/${userId}`).once('value');
-      userDataMap[userId] = userSnapshot.val();
-    }
+    const userPromises = userIds.map(userId =>
+      database.ref(`users/${userId}`).once('value')
+        .then(snapshot => ({ userId, data: snapshot.val() }))
+    );
+
+    const userResults = await Promise.all(userPromises);
+    userResults.forEach(({ userId, data }) => {
+      userDataMap[userId] = data;
+    });
 
     messagesList.innerHTML = messages.map(msg => {
       const userData = userDataMap[msg.userId];
@@ -3095,6 +3167,94 @@ window.exportLogs = async function() {
 };
 
 // Recalculate user statistics (message count and total likes)
+// Migrate existing private messages to new structure
+window.migratePrivateMessages = async function() {
+  if (!currentUser) {
+    showError('You must be logged in');
+    return;
+  }
+
+  // Check if user is admin
+  const userSnapshot = await database.ref(`users/${currentUser.uid}`).once('value');
+  const userData = userSnapshot.val();
+  if (!userData || userData.role !== 'admin') {
+    showError('Only admins can run migration');
+    return;
+  }
+
+  if (!confirm('This will migrate all existing private messages to the new conversation structure. Continue?')) {
+    return;
+  }
+
+  try {
+    showSuccess('Starting migration...');
+    devLog('🔄 Starting private messages migration...');
+
+    // Get all users to find all possible chat IDs
+    const usersSnapshot = await database.ref('users').once('value');
+    const allUsers = usersSnapshot.val() || {};
+    const allUserIds = Object.keys(allUsers);
+
+    let conversationsUpdated = 0;
+    const updates = {};
+
+    // For each pair of users, check if they have messages
+    for (let i = 0; i < allUserIds.length; i++) {
+      for (let j = i + 1; j < allUserIds.length; j++) {
+        const userId1 = allUserIds[i];
+        const userId2 = allUserIds[j];
+
+        // Create chatId (sorted order)
+        const chatId = [userId1, userId2].sort().join('_');
+
+        try {
+          // Try to read this conversation
+          const messagesSnapshot = await database.ref(`privateMessages/${chatId}`).once('value');
+          const messages = messagesSnapshot.val();
+
+          if (!messages) continue;
+
+          const messagesList = Object.values(messages);
+          if (messagesList.length === 0) continue;
+
+          // Get the last message timestamp
+          const lastMessage = messagesList[messagesList.length - 1];
+          const lastMessageTime = lastMessage.timestamp || Date.now();
+
+          // Add conversation to both users
+          updates[`users/${userId1}/conversations/${chatId}`] = {
+            lastMessageTime: lastMessageTime,
+            otherUserId: userId2
+          };
+
+          updates[`users/${userId2}/conversations/${chatId}`] = {
+            lastMessageTime: lastMessageTime,
+            otherUserId: userId1
+          };
+
+          conversationsUpdated += 2;
+        } catch (error) {
+          // Skip conversations we don't have permission to read
+          devLog(`Skipping ${chatId}: ${error.message}`);
+          continue;
+        }
+      }
+    }
+
+    // Apply all updates at once
+    if (Object.keys(updates).length > 0) {
+      await database.ref().update(updates);
+    }
+
+    devLog(`✅ Migration complete! Updated ${conversationsUpdated} conversation entries.`);
+    showSuccess(`Migration complete! Updated ${conversationsUpdated} conversation entries.`);
+
+  } catch (error) {
+    console.error('Migration error:', error);
+    showError('Migration failed: ' + error.message);
+  }
+};
+
 window.recalculateUserStats = async function() {
   showCustomModal({
     icon: '🔄',
@@ -3267,12 +3427,24 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// Escape HTML attributes to prevent XSS in onclick, href, etc.
+function escapeAttr(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/'/g, '&#39;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\\/g, '\\\\');
+}
+
 // Process message text with mentions
 function processMessageText(text) {
   let processed = escapeHtml(text);
   // Replace @username with clickable mentions
   processed = processed.replace(/@([\w\u4e00-\u9fa5]+)/g, (match, username) => {
-    return `<a href="@${username}" class="mention-link" onclick="event.preventDefault(); findUserByUsername('${username}')">${match}</a>`;
+    return `<a href="@${escapeAttr(username)}" class="mention-link" onclick="event.preventDefault(); findUserByUsername('${escapeAttr(username)}')">${match}</a>`;
   });
   return processed;
 }
@@ -3375,10 +3547,13 @@ searchUser.addEventListener('input', async (e) => {
 let allAnnouncements = [];
 let announcementsExpanded = false;
 
+// Store announcements listener ID for cleanup
+let announcementsListenerId = null;
+
 function loadAnnouncements() {
   const announcementsRef = database.ref('announcements');
 
-  announcementsRef.on('value', (snapshot) => {
+  const announcementsCallback = (snapshot) => {
     const container = document.getElementById('announcementsList');
     const showMoreBtn = document.getElementById('showMoreAnnouncements');
 
@@ -3406,7 +3581,14 @@ function loadAnnouncements() {
     }
 
     renderAnnouncements();
-  });
+  };
+
+  announcementsListenerId = addManagedListener(
+    announcementsRef,
+    'value',
+    announcementsCallback,
+    'announcements-list'
+  );
 }
 
 async function renderAnnouncements() {
@@ -3670,10 +3852,10 @@ window.editMessage = function(messageId, currentText) {
   const originalHtml = messageTextEl.innerHTML;
 
   messageTextEl.innerHTML = `
-    <textarea class="edit-textarea" id="edit-${messageId}">${currentText}</textarea>
+    <textarea class="edit-textarea" id="edit-${escapeAttr(messageId)}">${currentText}</textarea>
     <div class="edit-actions">
-      <button class="btn-small btn-primary" onclick="saveEdit('${messageId}')">Save</button>
-      <button class="btn-small btn-secondary" onclick="cancelEdit('${messageId}', \`${escapeHtml(originalHtml)}\`)">Cancel</button>
+      <button class="btn-small btn-primary" onclick="saveEdit('${escapeAttr(messageId)}')">Save</button>
+      <button class="btn-small btn-secondary" data-original-html="${escapeAttr(originalHtml)}" onclick="cancelEdit('${escapeAttr(messageId)}', this.dataset.originalHtml)">Cancel</button>
     </div>
   `;
 
@@ -4119,8 +4301,12 @@ if (searchInput) {
     const messages = messagesContainer.querySelectorAll('.message');
 
     messages.forEach(message => {
-      const text = message.querySelector('.message-text').textContent.toLowerCase();
-      const author = message.querySelector('.message-author').textContent.toLowerCase();
+      // FIXED: Add null checks to prevent crashes
+      const textEl = message.querySelector('.message-text');
+      const authorEl = message.querySelector('.message-author');
+
+      const text = textEl?.textContent.toLowerCase() || '';
+      const author = authorEl?.textContent.toLowerCase() || '';
 
       if (text.includes(query) || author.includes(query) || query === '') {
         message.style.display = '';
@@ -4175,14 +4361,13 @@ function getUserLevel(messageCount) {
   return { level: 1, name: '🐣 Newbie' };
 }
 
-// Update user message count
+// Update user message count using transaction to prevent race conditions
 async function updateMessageCount(userId) {
   try {
-    const userRef = database.ref(`users/${userId}`);
-    const snapshot = await userRef.once('value');
-    const userData = snapshot.val();
-    const currentCount = userData?.messageCount || 0;
-    await userRef.update({ messageCount: currentCount + 1 });
+    const messageCountRef = database.ref(`users/${userId}/messageCount`);
+    await messageCountRef.transaction((currentCount) => {
+      return (currentCount || 0) + 1;
+    });
   } catch (error) {
     console.error('Failed to update message count:', error);
   }
@@ -4493,7 +4678,10 @@ window.togglePin = async function(messageId, pin) {
 // WELCOME NEW USERS
 // ============================================
 
-// Monitor new user registrations
+// Monitor new user registrations - DISABLED for performance
+// This was causing severe performance issues by listening to ALL users
+// If needed, can be re-enabled with proper filtering or only for admins
+/*
 database.ref('users').on('child_added', async (snapshot) => {
   const userId = snapshot.key;
   const userData = snapshot.val();
@@ -4510,6 +4698,7 @@ database.ref('users').on('child_added', async (snapshot) => {
     // await sendWelcomeMessage(userData.username);
   }
 });
+*/
 
 function showWelcomeNotification(username) {
   const notification = document.createElement('div');
@@ -4761,11 +4950,14 @@ postAnnouncementBtn.addEventListener('click', async () => {
   }
 });
 
+// Store announcements manager listener ID
+let announcementsManagerListenerId = null;
+
 // Load announcements for management
 async function loadAnnouncementsManager() {
   if (!announcementsManager) return;
 
-  database.ref('announcements').on('value', async (snapshot) => {
+  const announcementsManagerCallback = async (snapshot) => {
     announcementsManager.innerHTML = '';
 
     if (!snapshot.exists()) {
@@ -4778,16 +4970,19 @@ async function loadAnnouncementsManager() {
       announcements.push({ id: child.key, ...child.val() });
     });
 
-    // Load user data
-    const userIds = [...new Set(announcements.map(ann => ann.author))];
+    // Load user data - OPTIMIZED: Use Promise.all
+    const userIds = [...new Set(announcements.map(ann => ann.author).filter(Boolean))];
     const userDataMap = {};
 
-    for (const userId of userIds) {
-      if (userId && !userDataMap[userId]) {
-        const userSnapshot = await database.ref(`users/${userId}`).once('value');
-        userDataMap[userId] = userSnapshot.val();
-      }
-    }
+    const userPromises = userIds.map(userId =>
+      database.ref(`users/${userId}`).once('value')
+        .then(snapshot => ({ userId, data: snapshot.val() }))
+    );
+
+    const userResults = await Promise.all(userPromises);
+    userResults.forEach(({ userId, data }) => {
+      userDataMap[userId] = data;
+    });
 
     announcements.forEach((announcement) => {
       const announcementId = announcement.id;
@@ -4827,7 +5022,14 @@ async function loadAnnouncementsManager() {
 
       announcementsManager.appendChild(item);
     });
-  });
+  };
+
+  announcementsManagerListenerId = addManagedListener(
+    database.ref('announcements'),
+    'value',
+    announcementsManagerCallback,
+    'announcements-manager'
+  );
 }
 
 window.editAnnouncement = function(id, title, text, badge) {
@@ -5246,7 +5448,7 @@ const typingText = typingIndicator?.querySelector('.typing-text');
 let typingUsers = new Map();
 
 // Listen for typing status
-database.ref('typing').on('value', (snapshot) => {
+const typingCallback = (snapshot) => {
   console.log('🔔 Typing status update received');
 
   if (!currentUser) {
@@ -5278,7 +5480,9 @@ database.ref('typing').on('value', (snapshot) => {
 
   console.log('📊 Total typing users:', typingUsers.size);
   updateTypingIndicator();
-});
+};
+
+addManagedListener(database.ref('typing'), 'value', typingCallback, 'typing-indicator');
 
 function updateTypingIndicator() {
   let existingIndicator = messagesContainer.querySelector('.typing-indicator-message');
@@ -5429,7 +5633,7 @@ const messageObserver = new IntersectionObserver((entries) => {
   threshold: 0.5 // Message must be 50% visible
 });
 
-function observeMessageVisibility(messageEl, messageId, authorId) {
+function observeMessageVisibility(messageEl, authorId) {
   messageEl.dataset.authorId = authorId;
   messageObserver.observe(messageEl);
 }
@@ -5536,7 +5740,7 @@ function initMentionAutocomplete() {
       ).slice(0, 5);
 
       if (matches.length > 0 && query.length > 0) {
-        showMentionAutocomplete(matches, messageInput);
+        showMentionAutocomplete(matches);
       } else {
         hideMentionAutocomplete();
       }
@@ -5575,7 +5779,7 @@ function initMentionAutocomplete() {
   });
 }
 
-function showMentionAutocomplete(users, inputEl) {
+function showMentionAutocomplete(users) {
   const autocomplete = document.getElementById('mentionAutocomplete');
   autocomplete.innerHTML = '';
   autocomplete.style.display = 'block';
@@ -5647,10 +5851,10 @@ function selectMention(username, uid) {
 
 // Initialize online users display
 function initOnlineUsersList() {
-  console.log('🎯 Initializing online users list...');
-  console.log('🔍 Database object:', database);
+  devLog('🎯 Initializing online users list...');
+  devLog('🔍 Database object:', database);
   const container = document.getElementById('onlineUsersList');
-  console.log('📦 Container found:', container);
+  devLog('📦 Container found:', container);
 
   if (!container) {
     console.error('❌ Container #onlineUsersList not found in DOM!');
@@ -5662,20 +5866,25 @@ function initOnlineUsersList() {
     return;
   }
 
-  // Listen for status changes with debouncing
-  console.log('👂 Setting up status listener...');
+  // Listen for status changes with debouncing (managed)
+  devLog('👂 Setting up status listener...');
   let updateTimeout;
-  database.ref('status').on('value', async (snapshot) => {
-    console.log('🔄 Status update received');
+  const statusCallback = async (snapshot) => {
+    devLog('🔄 Status update received');
 
     // Debounce updates to avoid too frequent refreshes
     clearTimeout(updateTimeout);
     updateTimeout = setTimeout(async () => {
       await updateOnlineUsersList(snapshot);
     }, 500); // Wait 500ms before updating
-  }, (error) => {
-    console.error('❌ Error listening to status:', error);
-  });
+  };
+
+  addManagedListener(
+    database.ref('status'),
+    'value',
+    statusCallback,
+    'online-status'
+  );
 
   console.log('✅ Online users list listener set up successfully');
 }
@@ -5806,7 +6015,7 @@ function startVersionCheck() {
   const versionRef = database.ref('appVersion');
 
   // Use .on() for real-time updates instead of polling
-  versionListener = versionRef.on('value', (snapshot) => {
+  const versionCallback = (snapshot) => {
     if (snapshot.exists()) {
       const serverVersion = snapshot.val().current;
       let currentVersion = localStorage.getItem('app_version');
@@ -5840,9 +6049,9 @@ function startVersionCheck() {
         updateVersionDisplay(); // Update display to match
       }
     }
-  }, (error) => {
-    console.error('❌ Failed to listen for version updates:', error);
-  });
+  };
+
+  addManagedListener(versionRef, 'value', versionCallback, 'version-check');
 }
 
 // Stop version checking
