@@ -355,6 +355,115 @@ function showWarning(message) {
   });
 }
 
+// Real-time Email Verification Modal
+function showEmailVerificationModal(user) {
+  const customModalOverlay = document.getElementById('customModalOverlay');
+  const customModal = document.getElementById('customModal');
+  const customModalIcon = document.getElementById('customModalIcon');
+  const customModalTitle = document.getElementById('customModalTitle');
+  const customModalMessage = document.getElementById('customModalMessage');
+  const customModalButtons = document.getElementById('customModalButtons');
+
+  // Set content
+  customModalIcon.textContent = '📧';
+  customModalTitle.textContent = 'Verify Your Email';
+  customModalMessage.innerHTML = `
+    <p>We've sent a verification email to <strong>${user.email}</strong></p>
+    <p>Please check your inbox and click the verification link.</p>
+    <p id="verificationStatus" style="margin-top: 15px; color: #666;">
+      <span class="loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #007bff; border-radius: 50%; animation: spin 1s linear infinite;"></span>
+      Waiting for verification...
+    </p>
+  `;
+
+  // Add CSS for spinner animation if not exists
+  if (!document.getElementById('spinner-style')) {
+    const style = document.createElement('style');
+    style.id = 'spinner-style';
+    style.textContent = `
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Set buttons
+  customModalButtons.innerHTML = `
+    <button id="resendEmailBtn" class="modal-btn modal-btn-secondary">Resend Email</button>
+    <button id="checkVerificationBtn" class="modal-btn modal-btn-primary">I've Verified</button>
+  `;
+
+  // Show modal
+  customModalOverlay.classList.add('active');
+  customModal.classList.add('active');
+
+  // Start real-time verification check
+  let verificationCheckInterval = setInterval(async () => {
+    try {
+      await user.reload();
+      if (user.emailVerified) {
+        clearInterval(verificationCheckInterval);
+
+        // Update status
+        const statusEl = document.getElementById('verificationStatus');
+        if (statusEl) {
+          statusEl.innerHTML = '<span style="color: #28a745;">✓ Email verified successfully!</span>';
+        }
+
+        // Close modal and show success
+        setTimeout(() => {
+          customModalOverlay.classList.remove('active');
+          customModal.classList.remove('active');
+          showSuccess('Registration successful! Welcome to the forum!');
+
+          // User is already logged in, just reload the page or update UI
+          // The auth.onAuthStateChanged will handle the rest
+        }, 1500);
+      }
+    } catch (error) {
+      console.error('Error checking verification:', isProduction ? error.message : error);
+    }
+  }, 2000); // Check every 2 seconds
+
+  // Resend email button
+  document.getElementById('resendEmailBtn').addEventListener('click', async () => {
+    try {
+      await user.sendEmailVerification({
+        url: window.location.origin,
+        handleCodeInApp: false
+      });
+      showSuccess('Verification email resent! Please check your inbox.');
+    } catch (error) {
+      showError('Failed to resend email: ' + error.message);
+    }
+  });
+
+  // Manual check button
+  document.getElementById('checkVerificationBtn').addEventListener('click', async () => {
+    try {
+      await user.reload();
+      if (user.emailVerified) {
+        clearInterval(verificationCheckInterval);
+        customModalOverlay.classList.remove('active');
+        customModal.classList.remove('active');
+        showSuccess('Registration successful! Welcome to the forum!');
+      } else {
+        showError('Email not verified yet. Please check your inbox and click the verification link.');
+      }
+    } catch (error) {
+      showError('Error checking verification: ' + error.message);
+    }
+  });
+
+  // Clean up interval when modal is closed
+  customModalOverlay.addEventListener('click', (e) => {
+    if (e.target === customModalOverlay) {
+      clearInterval(verificationCheckInterval);
+    }
+  });
+}
+
 function showConfirm(message, onConfirm, onCancel = () => {}) {
   showCustomModal({
     icon: '?',
@@ -413,18 +522,6 @@ auth.onAuthStateChanged(async (user) => {
     }
 
     isAdmin = userData?.role === 'admin';
-
-    // Check if email is verified (but allow admins to bypass for now)
-    if (!user.emailVerified && !isAdmin) {
-      showError('Please verify your email before accessing the forum. Check your inbox!');
-      await auth.signOut();
-      return;
-    }
-
-    // Show warning to unverified admins
-    if (!user.emailVerified && isAdmin) {
-      showWarning('⚠️ Admin: Please verify your email for better security!');
-    }
 
     if (isAdmin) {
       adminPanelBtn.style.display = 'block';
@@ -599,35 +696,7 @@ loginBtn.addEventListener('click', async () => {
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
-    // Check if email is verified
-    if (!user.emailVerified) {
-      // Show option to resend verification email
-      showCustomModal({
-        icon: '📧',
-        title: 'Email Not Verified',
-        message: 'Please verify your email before logging in. Check your inbox for the verification link.',
-        type: 'confirm',
-        confirmText: 'Resend Verification Email',
-        cancelText: 'Cancel',
-        onConfirm: async () => {
-          try {
-            await user.sendEmailVerification({
-              url: window.location.origin,
-              handleCodeInApp: false
-            });
-            showSuccess('Verification email sent! Please check your inbox.');
-          } catch (error) {
-            showError('Failed to send verification email: ' + error.message);
-          }
-        }
-      });
-
-      await auth.signOut();
-      loginBtn.disabled = false;
-      loginBtn.textContent = 'Sign In';
-      return;
-    }
-
+    // No email verification check for login - allow all users
     if (rememberMe.checked) {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     }
@@ -707,12 +776,7 @@ registerBtn.addEventListener('click', async () => {
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
-    // IMPORTANT: Sign out IMMEDIATELY to prevent race condition
-    // This must happen BEFORE saving to database or sending email
-    await auth.signOut();
-
-    // Save user data (after sign out to prevent race condition)
-    // Note: We don't store emailVerified in database because Firebase Auth already tracks this
+    // Save user data
     await database.ref(`users/${user.uid}`).set({
       username: username,
       email: email,
@@ -723,13 +787,14 @@ registerBtn.addEventListener('click', async () => {
       messageCount: 0
     });
 
-    // Send verification email (after sign out)
+    // Send verification email
     await user.sendEmailVerification({
-      url: window.location.origin, // Redirect back to the app after verification
+      url: window.location.origin,
       handleCodeInApp: false
     });
 
-    showSuccess('Account created! Please check your email to verify your account.');
+    // Show verification waiting modal with real-time detection
+    showEmailVerificationModal(user);
 
     // Re-enable button
     registerBtn.disabled = false;
