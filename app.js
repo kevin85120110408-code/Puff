@@ -1,5 +1,7 @@
 // Production mode detection
-const isProduction = false; // Force debug mode for testing
+const isProduction = window.location.hostname !== 'localhost' &&
+                     window.location.hostname !== '127.0.0.1' &&
+                     !window.location.hostname.includes('192.168');
 
 // Conditional logging - only log in development
 const devLog = console.log.bind(console);
@@ -9,19 +11,234 @@ const devTimeEnd = console.timeEnd.bind(console);
 devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.14 (DEBUG MODE) 🔥🔥🔥');
 
 // ===== CONSTANTS =====
-const PASSWORD_MIN_LENGTH = 6;
+const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 128;
 const USERNAME_MIN_LENGTH = 3;
 const USERNAME_MAX_LENGTH = 20;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;  // 10MB
-const MAX_TOTAL_FILE_SIZE = 25 * 1024 * 1024;  // 25MB
+// File size limits (reduced to stay within free tier)
+const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 5MB per file (reduced from 10MB)
+const MAX_TOTAL_FILE_SIZE = 10 * 1024 * 1024;  // 10MB total (reduced from 25MB)
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024;  // 2MB for avatars (reduced from 5MB)
+const MAX_DAILY_UPLOADS = 10;  // Max 10 files per user per day
+const MAX_USER_STORAGE = 50 * 1024 * 1024;  // 50MB per user total
+
 const ALLOWED_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf', 'text/plain',
-  'application/zip', 'application/x-zip-compressed'
+  'application/pdf', 'text/plain'
+  // ZIP files removed for security reasons
 ];
+
+// ============================================
+// PERFORMANCE OPTIMIZATIONS
+// ============================================
+
+// Lazy loading for images
+const imageObserver = new IntersectionObserver((entries, observer) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      const src = img.dataset.src;
+      if (src) {
+        img.src = src;
+        img.removeAttribute('data-src');
+        observer.unobserve(img);
+      }
+    }
+  });
+}, {
+  rootMargin: '50px' // Start loading 50px before image enters viewport
+});
+
+// Function to setup lazy loading for an image
+function setupLazyLoading(img) {
+  if ('IntersectionObserver' in window) {
+    imageObserver.observe(img);
+  } else {
+    // Fallback for browsers that don't support IntersectionObserver
+    const src = img.dataset.src;
+    if (src) {
+      img.src = src;
+      img.removeAttribute('data-src');
+    }
+  }
+}
+
+// Debounce function for performance
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Throttle function for performance
+function throttle(func, limit) {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
+
+// ============================================
+// RATE LIMITING
+// ============================================
+
+// Rate limiter class
+class RateLimiter {
+  constructor(maxActions, timeWindowMs) {
+    this.maxActions = maxActions;
+    this.timeWindowMs = timeWindowMs;
+    this.actions = [];
+  }
+
+  canPerformAction() {
+    const now = Date.now();
+    // Remove old actions outside the time window
+    this.actions = this.actions.filter(time => now - time < this.timeWindowMs);
+
+    if (this.actions.length >= this.maxActions) {
+      return false;
+    }
+
+    this.actions.push(now);
+    return true;
+  }
+
+  getRemainingTime() {
+    if (this.actions.length < this.maxActions) {
+      return 0;
+    }
+    const oldestAction = this.actions[0];
+    const remainingMs = this.timeWindowMs - (Date.now() - oldestAction);
+    return Math.max(0, Math.ceil(remainingMs / 1000));
+  }
+}
+
+// Rate limiters for different actions
+const rateLimiters = {
+  message: new RateLimiter(10, 60000),      // 10 messages per minute
+  reaction: new RateLimiter(30, 60000),     // 30 reactions per minute
+  privateMessage: new RateLimiter(20, 60000), // 20 PMs per minute
+  follow: new RateLimiter(10, 60000),       // 10 follows per minute
+  bookmark: new RateLimiter(20, 60000),     // 20 bookmarks per minute
+  report: new RateLimiter(5, 300000)        // 5 reports per 5 minutes
+};
+
+// Check daily upload limit
+async function checkDailyUploadLimit() {
+  if (!currentUser) return false;
+
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const uploadCountRef = database.ref(`uploadLimits/${currentUser.uid}/${today}`);
+
+  try {
+    const snapshot = await uploadCountRef.once('value');
+    const count = snapshot.val() || 0;
+
+    if (count >= MAX_DAILY_UPLOADS) {
+      showError(`Daily upload limit reached (${MAX_DAILY_UPLOADS} files/day). Please try again tomorrow.`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking upload limit:', error);
+    return true; // Allow upload if check fails
+  }
+}
+
+// Increment daily upload count
+async function incrementUploadCount() {
+  if (!currentUser) return;
+
+  const today = new Date().toISOString().split('T')[0];
+  const uploadCountRef = database.ref(`uploadLimits/${currentUser.uid}/${today}`);
+
+  try {
+    await uploadCountRef.transaction((current) => {
+      return (current || 0) + 1;
+    });
+  } catch (error) {
+    console.error('Error incrementing upload count:', error);
+  }
+}
+
+// File type validation with magic number checking
+function validateFileType(file) {
+  // Check MIME type first
+  if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    return false;
+  }
+
+  // For images, verify it's actually an image by checking magic numbers
+  if (file.type.startsWith('image/')) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = (e) => {
+        const arr = new Uint8Array(e.target.result).subarray(0, 4);
+        let header = '';
+        for (let i = 0; i < arr.length; i++) {
+          header += arr[i].toString(16);
+        }
+
+        // Check magic numbers for common image formats
+        const validHeaders = {
+          'ffd8ffe0': 'image/jpeg', // JPEG
+          'ffd8ffe1': 'image/jpeg', // JPEG
+          'ffd8ffe2': 'image/jpeg', // JPEG
+          '89504e47': 'image/png',  // PNG
+          '47494638': 'image/gif',  // GIF
+          '52494646': 'image/webp'  // WEBP (starts with RIFF)
+        };
+
+        const isValid = Object.keys(validHeaders).some(h => header.startsWith(h));
+        resolve(isValid);
+      };
+      reader.onerror = () => resolve(false);
+      reader.readAsArrayBuffer(file.slice(0, 4));
+    });
+  }
+
+  return Promise.resolve(true);
+}
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_\u4e00-\u9fa5]+$/;
+
+// Password strength validation
+function validatePasswordStrength(password) {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return {
+      valid: false,
+      message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters`
+    };
+  }
+
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+
+  const strength = hasUpperCase + hasLowerCase + hasNumbers + hasSpecialChar;
+
+  if (strength < 2) {
+    return {
+      valid: false,
+      message: 'Password must contain at least 2 of: uppercase, lowercase, numbers, special characters'
+    };
+  }
+
+  return { valid: true };
+}
+
 devLog('Production mode:', isProduction);
 
 // Global state
@@ -74,18 +291,7 @@ function cleanupObservers() {
   }
 }
 
-// Utility: Debounce function to prevent excessive calls
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
+// Debounce function moved to top of file for reusability
 
 // Timeout management to prevent memory leaks
 const activeTimeouts = new Set();
@@ -422,6 +628,7 @@ function showEmailVerificationModal(user) {
       await user.reload();
       if (user.emailVerified) {
         clearInterval(verificationCheckInterval);
+        verificationCheckInterval = null;
 
         // Update status
         const statusEl = document.getElementById('verificationStatus');
@@ -448,6 +655,11 @@ function showEmailVerificationModal(user) {
       }
     } catch (error) {
       console.error('Error checking verification:', isProduction ? error.message : error);
+      // If error (e.g., user logged out), stop checking
+      if (verificationCheckInterval) {
+        clearInterval(verificationCheckInterval);
+        verificationCheckInterval = null;
+      }
     }
   }, 2000); // Check every 2 seconds
 
@@ -549,10 +761,36 @@ auth.onAuthStateChanged(async (user) => {
     devLog('  - isWaitingForEmailVerification:', isWaitingForEmailVerification);
     devLog('  - user.emailVerified:', user.emailVerified);
 
-    // If waiting for email verification, don't proceed to forum
+    // Only check email verification during registration flow
+    // If user is logging in (not in registration flow), skip verification check
     if (isWaitingForEmailVerification && !user.emailVerified) {
-      devLog('⏸️ Waiting for email verification, not loading forum yet');
+      devLog('⏸️ Waiting for email verification during registration, not loading forum yet');
       return;
+    }
+
+    // If user refreshed page during registration and email is not verified,
+    // check if account was created recently (within last 10 minutes)
+    if (!user.emailVerified && !isWaitingForEmailVerification) {
+      const userRef = database.ref(`users/${user.uid}`);
+      const snapshot = await userRef.once('value');
+      const userData = snapshot.val();
+
+      if (userData && userData.createdAt) {
+        const accountAge = Date.now() - userData.createdAt;
+        const tenMinutes = 10 * 60 * 1000;
+
+        // If account is less than 10 minutes old and email not verified,
+        // show verification modal
+        if (accountAge < tenMinutes) {
+          devLog('📧 New account detected, showing verification modal');
+          isWaitingForEmailVerification = true;
+          showEmailVerificationModal(user);
+          return;
+        }
+      }
+
+      // Account is old but email not verified - allow login anyway
+      devLog('⚠️ Old account with unverified email - allowing login');
     }
 
     devLog('✅ Proceeding to load forum');
@@ -750,30 +988,35 @@ loginBtn.addEventListener('click', async () => {
   loginBtn.textContent = 'Signing in...';
 
   try {
-    const userCredential = await auth.signInWithEmailAndPassword(email, password);
-    const user = userCredential.user;
-
-    // Check if email is verified
-    if (!user.emailVerified) {
-      // Email not verified - show verification modal
-      devLog('📧 User email not verified, showing verification modal');
-      isWaitingForEmailVerification = true;
-      showEmailVerificationModal(user);
-
-      // Re-enable button
-      loginBtn.disabled = false;
-      loginBtn.textContent = 'Sign In';
-      return;
-    }
-
-    // Email verified - proceed with login
+    // Set persistence before login if remember me is checked
     if (rememberMe.checked) {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     }
 
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+    const user = userCredential.user;
+
+    devLog('✅ Login successful for user:', user.uid);
     showSuccess('Login successful!');
+
+    // onAuthStateChanged will handle the rest
   } catch (error) {
-    showError(error.message);
+    console.error('Login error:', error);
+
+    // Provide user-friendly error messages
+    let errorMessage = error.message;
+    if (error.code === 'auth/user-not-found') {
+      errorMessage = 'No account found with this email. Please register first.';
+    } else if (error.code === 'auth/wrong-password') {
+      errorMessage = 'Incorrect password. Please try again.';
+    } else if (error.code === 'auth/invalid-email') {
+      errorMessage = 'Invalid email address.';
+    } else if (error.code === 'auth/user-disabled') {
+      errorMessage = 'This account has been disabled.';
+    }
+
+    showError(errorMessage);
+
     // Re-enable button on error
     loginBtn.disabled = false;
     loginBtn.textContent = 'Sign In';
@@ -819,9 +1062,10 @@ registerBtn.addEventListener('click', async () => {
     return;
   }
 
-  // Validate password strength (must contain both letters and numbers)
-  if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(password)) {
-    showError('Password must contain both letters and numbers');
+  // Validate password strength
+  const passwordValidation = validatePasswordStrength(password);
+  if (!passwordValidation.valid) {
+    showError(passwordValidation.message);
     return;
   }
 
@@ -1416,31 +1660,48 @@ attachFolderBtn.addEventListener('click', () => {
 });
 
 // Handle file selection
-fileInput.addEventListener('change', (e) => {
+fileInput.addEventListener('change', async (e) => {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
+
+  // Check daily upload limit
+  const canUpload = await checkDailyUploadLimit();
+  if (!canUpload) {
+    fileInput.value = '';
+    return;
+  }
 
   // Check file types
   const invalidFile = files.find(file => !ALLOWED_FILE_TYPES.includes(file.type));
   if (invalidFile) {
-    showError(`File type not allowed: ${invalidFile.name}. Allowed types: images, PDF, text, and ZIP files.`);
+    showError(`File type not allowed: ${invalidFile.name}. Allowed types: images, PDF, and text files.`);
     fileInput.value = '';
     return;
   }
 
-  // Check total size (max 25MB total)
+  // Validate file types with magic number checking
+  for (const file of files) {
+    const isValid = await validateFileType(file);
+    if (!isValid) {
+      showError(`File "${file.name}" appears to be corrupted or is not a valid ${file.type} file.`);
+      fileInput.value = '';
+      return;
+    }
+  }
+
+  // Check total size (max 10MB total - reduced for free tier)
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
 
   if (totalSize > MAX_TOTAL_FILE_SIZE) {
-    showError('Total file size must be less than 25MB');
+    showError(`Total file size must be less than ${MAX_TOTAL_FILE_SIZE / 1024 / 1024}MB`);
     fileInput.value = '';
     return;
   }
 
-  // Check individual file size (max 10MB per file)
+  // Check individual file size (max 5MB per file - reduced for free tier)
   const oversizedFile = files.find(file => file.size > MAX_FILE_SIZE);
   if (oversizedFile) {
-    showError(`File "${oversizedFile.name}" is too large. Max 10MB per file.`);
+    showError(`File "${oversizedFile.name}" is too large. Max ${MAX_FILE_SIZE / 1024 / 1024}MB per file.`);
     fileInput.value = '';
     return;
   }
@@ -1717,6 +1978,13 @@ window.addReaction = async function(messageId, emoji) {
     return;
   }
 
+  // Check rate limit
+  if (!rateLimiters.reaction.canPerformAction()) {
+    const remainingTime = rateLimiters.reaction.getRemainingTime();
+    showError(`You are reacting too quickly. Please wait ${remainingTime} seconds.`);
+    return;
+  }
+
   try {
     const reactionRef = database.ref(`reactions/${messageId}/${currentUser.uid}`);
     const snapshot = await reactionRef.once('value');
@@ -1803,12 +2071,22 @@ function updateReactionDisplay(messageId, reactions) {
       const hasReacted = userReactions[emoji].includes(currentUser?.uid);
       return `
         <button class="reaction-btn ${hasReacted ? 'reacted' : ''}"
-                onclick="addReaction('${messageId}', '${emoji}')"
+                data-message-id="${escapeAttr(messageId)}"
+                data-emoji="${escapeAttr(emoji)}"
                 title="${count} reaction${count > 1 ? 's' : ''}">
           ${emoji} <span class="reaction-count">${count}</span>
         </button>
       `;
     }).join('');
+
+  // Add event listeners using event delegation
+  reactionsContainer.querySelectorAll('.reaction-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const msgId = btn.dataset.messageId;
+      const emoji = btn.dataset.emoji;
+      addReaction(msgId, emoji);
+    });
+  });
 }
 
 // Show reaction picker
@@ -1825,8 +2103,18 @@ window.showReactionPicker = function(messageId, event) {
   const picker = document.createElement('div');
   picker.className = 'reaction-picker';
   picker.innerHTML = reactionEmojis.map(emoji =>
-    `<button class="reaction-emoji" onclick="event.stopPropagation(); addReaction('${messageId}', '${emoji}'); this.parentElement.remove();">${emoji}</button>`
+    `<button class="reaction-emoji" data-emoji="${escapeAttr(emoji)}">${emoji}</button>`
   ).join('');
+
+  // Add event listeners to emoji buttons
+  picker.querySelectorAll('.reaction-emoji').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const emoji = btn.dataset.emoji;
+      addReaction(messageId, emoji);
+      picker.remove();
+    });
+  });
 
   const button = event ? event.target.closest('.btn-react') : null;
   if (button) {
@@ -2301,6 +2589,13 @@ window.sendPrivateMessage = async function(chatId, recipientId) {
 
   if (!text || isSendingPM) return;
 
+  // Check rate limit
+  if (!rateLimiters.privateMessage.canPerformAction()) {
+    const remainingTime = rateLimiters.privateMessage.getRemainingTime();
+    showError(`You are sending private messages too quickly. Please wait ${remainingTime} seconds.`);
+    return;
+  }
+
   try {
     isSendingPM = true;
     if (sendBtn) {
@@ -2739,6 +3034,13 @@ window.reportMessage = async function(messageId, messageText, authorId) {
     return;
   }
 
+  // Check rate limit
+  if (!rateLimiters.report.canPerformAction()) {
+    const remainingTime = rateLimiters.report.getRemainingTime();
+    showError(`You are reporting too frequently. Please wait ${remainingTime} seconds.`);
+    return;
+  }
+
   // Use custom modal instead of prompt()
   showPrompt(
     'Please enter the reason for reporting this message:',
@@ -2801,8 +3103,16 @@ function initEmojiPicker() {
   // Render all emojis
   function renderEmojis(emojis = allEmojis) {
     emojiPickerBody.innerHTML = emojis.map(emoji =>
-      `<button class="emoji-item" onclick="insertEmoji('${emoji}')">${emoji}</button>`
+      `<button class="emoji-item" data-emoji="${escapeAttr(emoji)}">${emoji}</button>`
     ).join('');
+
+    // Add event listeners to emoji buttons
+    emojiPickerBody.querySelectorAll('.emoji-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const emoji = btn.dataset.emoji;
+        insertEmoji(emoji);
+      });
+    });
   }
 
   renderEmojis();
@@ -3485,7 +3795,7 @@ async function loadRecentActivity() {
         <div class="activity-item">
           <div class="activity-icon">${icon}</div>
           <div class="activity-content">
-            <p class="activity-text">${log.action} - ${log.targetUser || 'N/A'}</p>
+            <p class="activity-text">${escapeHtml(log.action)} - ${escapeHtml(log.targetUser || 'N/A')}</p>
             <span class="activity-time">${time}</span>
           </div>
         </div>
@@ -3598,8 +3908,8 @@ async function loadAdminLogs() {
       return `
         <div class="log-item">
           <div>
-            <div class="log-action">${log.action}</div>
-            <div class="log-details">By: ${log.adminUser} | Target: ${log.targetUser || 'N/A'}</div>
+            <div class="log-action">${escapeHtml(log.action)}</div>
+            <div class="log-details">By: ${escapeHtml(log.adminUser)} | Target: ${escapeHtml(log.targetUser || 'N/A')}</div>
           </div>
           <div class="log-time">${time}</div>
         </div>
@@ -3880,7 +4190,7 @@ window.cleanupOrphanedUsers = async function() {
 
         // Create a list of users with their online status
         const userList = Object.entries(users)
-          .filter(([uid, userData]) => !userData.deleted) // Filter out already deleted users
+          .filter(([, userData]) => !userData.deleted) // Filter out already deleted users
           .map(([uid, userData]) => {
             const isOnline = statusData[uid]?.online || false;
             return {
@@ -4812,8 +5122,11 @@ async function sendMessage() {
     await database.ref('messages').push(messageData);
     messageInput.value = '';
 
-    // Clear file selection
+    // Clear file selection and increment upload count
     if (selectedFiles.length > 0) {
+      // Increment daily upload count for each file
+      await incrementUploadCount();
+
       selectedFiles = [];
       fileInput.value = '';
       filePreviewContainer.style.display = 'none';
@@ -5970,22 +6283,13 @@ function containsProfanity(text) {
 // ============================================
 
 const messageTimestamps = [];
-const RATE_LIMIT_WINDOW = 10000; // 10 seconds
-const MAX_MESSAGES = 5; // Max 5 messages per 10 seconds
-
+// Legacy rate limit code - now using RateLimiter class
 function checkRateLimit() {
-  const now = Date.now();
-
-  // Remove old timestamps
-  while (messageTimestamps.length > 0 && messageTimestamps[0] < now - RATE_LIMIT_WINDOW) {
-    messageTimestamps.shift();
+  if (!rateLimiters.message.canPerformAction()) {
+    const remainingTime = rateLimiters.message.getRemainingTime();
+    showError(`You are sending messages too quickly. Please wait ${remainingTime} seconds.`);
+    return false;
   }
-
-  if (messageTimestamps.length >= MAX_MESSAGES) {
-    return false; // Rate limit exceeded
-  }
-
-  messageTimestamps.push(now);
   return true;
 }
 
@@ -6110,26 +6414,36 @@ if (uploadAvatarBtn) {
 
 // Handle file selection
 if (avatarFileInput) {
-  avatarFileInput.addEventListener('change', (e) => {
+  avatarFileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Check file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      showError('Image size must be less than 2MB');
+    // Check file size (max 2MB - reduced for free tier)
+    if (file.size > MAX_AVATAR_SIZE) {
+      showError(`Image size must be less than ${MAX_AVATAR_SIZE / 1024 / 1024}MB`);
+      avatarFileInput.value = '';
       return;
     }
 
     // Check file type
     if (!file.type.startsWith('image/')) {
       showError('Please select an image file');
+      avatarFileInput.value = '';
+      return;
+    }
+
+    // Validate file type with magic number checking
+    const isValid = await validateFileType(file);
+    if (!isValid) {
+      showError('Invalid image file. Please select a valid image.');
+      avatarFileInput.value = '';
       return;
     }
 
     // Preview image
     const reader = new FileReader();
     reader.onload = (e) => {
-      avatarPreview.innerHTML = `<img src="${e.target.result}" alt="Avatar">`;
+      avatarPreview.innerHTML = `<img src="${escapeAttr(e.target.result)}" alt="Avatar">`;
       avatarPreview.style.background = 'transparent';
       selectedAvatarData = { type: 'file', file: file, preview: e.target.result };
       selectedColor = null;
@@ -6141,6 +6455,7 @@ if (avatarFileInput) {
     };
     reader.onerror = () => {
       showError('Failed to read avatar file');
+      avatarFileInput.value = '';
     };
     reader.readAsDataURL(file);
   });

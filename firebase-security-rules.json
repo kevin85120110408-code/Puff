@@ -8,23 +8,48 @@
       ".indexOn": ["username", "email"],
       "$uid": {
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        "emailVerified": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".validate": "newData.hasChildren(['username', 'email', 'role', 'createdAt'])",
+        "username": {
+          ".validate": "newData.isString() && newData.val().length >= 3 && newData.val().length <= 20"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/)"
         },
         "role": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.val() === 'user' || newData.val() === 'admin'"
         },
         "banned": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isBoolean()"
         },
         "muted": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isBoolean()"
         },
         "deleted": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isBoolean()"
         },
         "deletedAt": {
-          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isNumber()"
+        },
+        "emailVerified": {
+          ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isBoolean()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "messageCount": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "avatarUrl": {
+          ".validate": "newData.isString()"
+        },
+        "avatarColor": {
+          ".validate": "newData.isString()"
         },
         "conversations": {
           ".read": "auth != null && auth.uid === $uid",
@@ -40,7 +65,31 @@
       ".indexOn": ["timestamp", "pinned", "userId"],
       "$messageId": {
         ".write": "auth != null && (!data.exists() || data.child('userId').val() === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".validate": "newData.hasChildren(['userId', 'text', 'timestamp'])"
+        ".validate": "newData.hasChildren(['userId', 'text', 'timestamp']) && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 10000 && newData.child('userId').val() === auth.uid && newData.child('timestamp').isNumber() && newData.child('timestamp').val() <= now + 60000",
+        "text": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 10000"
+        },
+        "userId": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "timestamp": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000 && newData.val() >= now - 60000"
+        },
+        "username": {
+          ".validate": "newData.isString()"
+        },
+        "edited": {
+          ".validate": "newData.isBoolean()"
+        },
+        "editedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "pinned": {
+          ".validate": "newData.isBoolean()"
+        },
+        "replyTo": {
+          ".validate": "newData.isString()"
+        }
       }
     },
 
@@ -66,7 +115,7 @@
     "notifications": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null || root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
       }
     },
 
@@ -94,7 +143,7 @@
     "followers": {
       "$uid": {
         ".read": "auth != null",
-        ".write": "auth != null || root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
       }
     },
 
@@ -138,6 +187,16 @@
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+      }
+    },
+
+    "uploadLimits": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$date": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+        }
       }
     }
   }

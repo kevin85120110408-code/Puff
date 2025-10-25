@@ -1,0 +1,76 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Helper function to validate file size
+    function isValidSize(maxSizeMB) {
+      return request.resource.size <= maxSizeMB * 1024 * 1024;
+    }
+    
+    // Helper function to validate image file type
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Helper function to validate allowed file types
+    function isAllowedFileType() {
+      return request.resource.contentType.matches('image/jpeg') ||
+             request.resource.contentType.matches('image/png') ||
+             request.resource.contentType.matches('image/gif') ||
+             request.resource.contentType.matches('image/webp') ||
+             request.resource.contentType.matches('application/pdf') ||
+             request.resource.contentType.matches('text/plain');
+    }
+    
+    // User avatars
+    match /avatars/{userId}/{fileName} {
+      // Allow read for all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow write only for the user themselves or admin
+      allow write: if isAuthenticated() && 
+                      (request.auth.uid == userId || isAdmin()) &&
+                      isImage() &&
+                      isValidSize(5); // 5MB max for avatars
+    }
+    
+    // Message attachments
+    match /messages/{messageId}/{fileName} {
+      // Allow read for all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow write only for authenticated users
+      allow write: if isAuthenticated() &&
+                      isAllowedFileType() &&
+                      isValidSize(10); // 10MB max per file
+    }
+    
+    // Announcement images
+    match /announcements/{announcementId}/{fileName} {
+      // Allow read for all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow write only for admins
+      allow write: if isAdmin() &&
+                      isImage() &&
+                      isValidSize(10); // 10MB max for announcement images
+    }
+    
+    // Deny all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
