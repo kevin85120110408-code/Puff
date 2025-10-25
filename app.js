@@ -411,14 +411,21 @@ function showEmailVerificationModal(user) {
           statusEl.innerHTML = '<span style="color: #28a745;">✓ Email verified successfully!</span>';
         }
 
+        // Clear the waiting flag
+        isWaitingForEmailVerification = false;
+
         // Close modal and show success
         setTimeout(() => {
           customModalOverlay.classList.remove('active');
           customModal.classList.remove('active');
           showSuccess('Registration successful! Welcome to the forum!');
 
-          // User is already logged in, just reload the page or update UI
-          // The auth.onAuthStateChanged will handle the rest
+          // Trigger auth state change to load the forum
+          // Force reload the current user to trigger onAuthStateChanged
+          auth.currentUser.reload().then(() => {
+            // This will trigger onAuthStateChanged with emailVerified = true
+            window.location.reload(); // Reload page to ensure clean state
+          });
         }, 1500);
       }
     } catch (error) {
@@ -445,9 +452,18 @@ function showEmailVerificationModal(user) {
       await user.reload();
       if (user.emailVerified) {
         clearInterval(verificationCheckInterval);
+
+        // Clear the waiting flag
+        isWaitingForEmailVerification = false;
+
         customModalOverlay.classList.remove('active');
         customModal.classList.remove('active');
         showSuccess('Registration successful! Welcome to the forum!');
+
+        // Reload page to enter forum
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       } else {
         showError('Email not verified yet. Please check your inbox and click the verification link.');
       }
@@ -505,10 +521,17 @@ updateVersionDisplay();
 
 // Auth State Observer
 let userStatusListener = null;
+let isWaitingForEmailVerification = false; // Flag to prevent auto-login during registration
 
 auth.onAuthStateChanged(async (user) => {
   if (user) {
     currentUser = user;
+
+    // If waiting for email verification, don't proceed to forum
+    if (isWaitingForEmailVerification && !user.emailVerified) {
+      devLog('Waiting for email verification, not loading forum yet');
+      return;
+    }
 
     const userRef = database.ref(`users/${user.uid}`);
     const snapshot = await userRef.once('value');
@@ -792,6 +815,9 @@ registerBtn.addEventListener('click', async () => {
       url: window.location.origin,
       handleCodeInApp: false
     });
+
+    // Set flag to prevent auto-login
+    isWaitingForEmailVerification = true;
 
     // Show verification waiting modal with real-time detection
     showEmailVerificationModal(user);
