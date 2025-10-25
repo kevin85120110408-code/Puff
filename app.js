@@ -3811,7 +3811,7 @@ window.recalculateUserStats = async function() {
   });
 };
 
-// Cleanup online status for deleted users
+// Cleanup online status for deleted users (manual trigger)
 window.cleanupOnlineStatus = async function() {
   showCustomModal({
     icon: '🧹',
@@ -3821,65 +3821,79 @@ window.cleanupOnlineStatus = async function() {
     confirmText: '开始清理',
     cancelText: '取消',
     onConfirm: async () => {
-      try {
-        showSuccess('正在清理在线状态...');
-
-        // Get all online status entries
-        const statusSnapshot = await database.ref('status').once('value');
-        const statusData = statusSnapshot.val() || {};
-
-        // Get all valid users
-        const usersSnapshot = await database.ref('users').once('value');
-        const validUserIds = new Set(Object.keys(usersSnapshot.val() || {}));
-
-        let deletedCount = 0;
-        const updates = {};
-
-        // Find status entries for deleted users
-        for (const uid in statusData) {
-          if (!validUserIds.has(uid)) {
-            updates[`status/${uid}`] = null; // Mark for deletion
-            deletedCount++;
-          }
-        }
-
-        // Also clean up typing status
-        const typingSnapshot = await database.ref('typing').once('value');
-        const typingData = typingSnapshot.val() || {};
-
-        for (const uid in typingData) {
-          if (!validUserIds.has(uid)) {
-            updates[`typing/${uid}`] = null;
-            deletedCount++;
-          }
-        }
-
-        // Also clean up userStatus
-        const userStatusSnapshot = await database.ref('userStatus').once('value');
-        const userStatusData = userStatusSnapshot.val() || {};
-
-        for (const uid in userStatusData) {
-          if (!validUserIds.has(uid)) {
-            updates[`userStatus/${uid}`] = null;
-            deletedCount++;
-          }
-        }
-
-        // Apply all deletions at once
-        if (deletedCount > 0) {
-          await database.ref().update(updates);
-          showSuccess(`✅ 已清理 ${deletedCount} 个已删除用户的状态数据`);
-        } else {
-          showSuccess('✅ 没有需要清理的数据');
-        }
-
-      } catch (error) {
-        console.error('Failed to cleanup online status:', error);
-        showError('清理失败: ' + error.message);
-      }
+      await performOnlineStatusCleanup(true); // true = show messages
     }
   });
 };
+
+// Perform the actual cleanup (can be called manually or automatically)
+async function performOnlineStatusCleanup(showMessages = false) {
+  try {
+    if (showMessages) {
+      showSuccess('正在清理在线状态...');
+    }
+
+    // Get all online status entries
+    const statusSnapshot = await database.ref('status').once('value');
+    const statusData = statusSnapshot.val() || {};
+
+    // Get all valid users
+    const usersSnapshot = await database.ref('users').once('value');
+    const validUserIds = new Set(Object.keys(usersSnapshot.val() || {}));
+
+    let deletedCount = 0;
+
+    // Find and delete status entries for deleted users
+    for (const uid in statusData) {
+      if (!validUserIds.has(uid)) {
+        try {
+          await database.ref(`status/${uid}`).remove();
+          deletedCount++;
+          console.log(`🧹 Cleaned up status for deleted user: ${uid}`);
+        } catch (error) {
+          console.error(`Failed to delete status for ${uid}:`, error);
+        }
+      }
+    }
+
+    // Also clean up typing status
+    const typingSnapshot = await database.ref('typing').once('value');
+    const typingData = typingSnapshot.val() || {};
+
+    for (const uid in typingData) {
+      if (!validUserIds.has(uid)) {
+        try {
+          await database.ref(`typing/${uid}`).remove();
+          deletedCount++;
+          console.log(`🧹 Cleaned up typing for deleted user: ${uid}`);
+        } catch (error) {
+          console.error(`Failed to delete typing for ${uid}:`, error);
+        }
+      }
+    }
+
+    if (showMessages) {
+      if (deletedCount > 0) {
+        showSuccess(`✅ 已清理 ${deletedCount} 个已删除用户的状态数据`);
+      } else {
+        showSuccess('✅ 没有需要清理的数据');
+      }
+    } else {
+      if (deletedCount > 0) {
+        console.log(`🧹 Auto-cleanup: Removed ${deletedCount} deleted user status entries`);
+      }
+    }
+
+    return deletedCount;
+
+  } catch (error) {
+    console.error('Failed to cleanup online status:', error);
+    if (showMessages) {
+      showError('清理失败: ' + error.message);
+    }
+    return 0;
+  }
+}
 
 // Reset database
 window.resetDatabase = async function() {
@@ -6521,29 +6535,50 @@ async function updateOnlineUsersList(statusSnapshot) {
 
   // Get user data for online users - use cache first (most will be cached)
   console.time('⏱️ Load online users data');
-  const usersData = await Promise.all(onlineUsers.map(async (user) => {
+  const usersData = [];
+  const deletedUserIds = []; // Track deleted users for auto-cleanup
+
+  for (const user of onlineUsers) {
     // Check cache first
     if (userCache.has(user.uid)) {
-      return {
+      usersData.push({
         uid: user.uid,
         ...userCache.get(user.uid)
-      };
+      });
+      continue;
     }
 
     // If not in cache, fetch from database
     const userSnapshot = await database.ref(`users/${user.uid}`).once('value');
     const userData = userSnapshot.val();
 
-    // Add to cache
     if (userData) {
+      // User exists - add to cache and list
       userCache.set(user.uid, userData);
+      usersData.push({
+        uid: user.uid,
+        ...userData
+      });
+    } else {
+      // User doesn't exist (deleted) - mark for cleanup
+      deletedUserIds.push(user.uid);
+      console.log(`🧹 Found deleted user in online status: ${user.uid}`);
     }
+  }
 
-    return {
-      uid: user.uid,
-      ...userData
-    };
-  }));
+  // Auto-cleanup deleted users (only if admin and found deleted users)
+  if (deletedUserIds.length > 0 && isAdmin) {
+    console.log(`🧹 Auto-cleaning ${deletedUserIds.length} deleted user(s) from online status...`);
+    for (const uid of deletedUserIds) {
+      try {
+        await database.ref(`status/${uid}`).remove();
+        console.log(`✅ Removed status for deleted user: ${uid}`);
+      } catch (error) {
+        console.error(`❌ Failed to remove status for ${uid}:`, error);
+      }
+    }
+  }
+
   console.timeEnd('⏱️ Load online users data');
 
   // Update display
