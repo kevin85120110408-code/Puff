@@ -602,11 +602,14 @@ loginBtn.addEventListener('click', async () => {
     // Check if email is verified
     if (!user.emailVerified) {
       // Show option to resend verification email
-      showCustomModal(
-        'Email Not Verified',
-        'Please verify your email before logging in. Check your inbox for the verification link.',
-        'Resend Verification Email',
-        async () => {
+      showCustomModal({
+        icon: '📧',
+        title: 'Email Not Verified',
+        message: 'Please verify your email before logging in. Check your inbox for the verification link.',
+        type: 'confirm',
+        confirmText: 'Resend Verification Email',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
           try {
             await user.sendEmailVerification({
               url: window.location.origin,
@@ -616,9 +619,8 @@ loginBtn.addEventListener('click', async () => {
           } catch (error) {
             showError('Failed to send verification email: ' + error.message);
           }
-        },
-        'Cancel'
-      );
+        }
+      });
 
       await auth.signOut();
       loginBtn.disabled = false;
