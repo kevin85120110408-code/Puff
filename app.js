@@ -629,10 +629,12 @@ async function loadMessages() {
   try {
     // Pre-fetch all messages first to batch load user data
     const initialSnapshot = await messagesRef.once('value');
+    const messages = [];
     const userIds = new Set();
 
     initialSnapshot.forEach(child => {
       const msg = child.val();
+      messages.push({ key: child.key, val: msg });
       if (msg.userId) {
         userIds.add(msg.userId);
       }
@@ -641,11 +643,50 @@ async function loadMessages() {
     // Batch load all user data
     await Promise.all(Array.from(userIds).map(userId => getUserData(userId)));
 
+    // Batch render all messages at once using DocumentFragment
+    const fragment = document.createDocumentFragment();
+
+    for (const { key, val } of messages) {
+      loadedMessages.add(key);
+      const userData = await getUserData(val.userId);
+
+      // Track oldest message
+      if (!oldestMessageKey || key < oldestMessageKey) {
+        oldestMessageKey = key;
+      }
+
+      // Create message element
+      const messageEl = createMessageElement(key, val, userData, false);
+      fragment.appendChild(messageEl);
+
+      // Set up listeners
+      listenToReactions(key);
+      database.ref(`status/${val.userId}/online`).on('value', (statusSnapshot) => {
+        const onlineDot = document.getElementById(`online-${val.userId}`);
+        if (onlineDot) {
+          onlineDot.style.display = statusSnapshot.val() ? 'block' : 'none';
+        }
+      });
+      observeMessageVisibility(messageEl, key, val.userId);
+    }
+
     // Remove loading indicator
     const finalLoadingText = messagesContainer.querySelector('.loading-text');
     if (finalLoadingText) {
       finalLoadingText.remove();
     }
+
+    // Append all messages at once
+    messagesContainer.appendChild(fragment);
+
+    // Scroll to bottom
+    setTimeout(() => {
+      messagesContainer.scrollTo({
+        top: messagesContainer.scrollHeight,
+        behavior: 'auto'
+      });
+    }, 100);
+
   } catch (error) {
     console.error('Error pre-loading user data:', error);
     // Continue anyway
@@ -655,7 +696,7 @@ async function loadMessages() {
     }
   }
 
-  // Now set up real-time listener
+  // Now set up real-time listener for NEW messages only
   messagesRef.on('child_added', async (snapshot) => {
     const messageId = snapshot.key;
 
@@ -5567,11 +5608,17 @@ function initOnlineUsersList() {
     return;
   }
 
-  // Listen for status changes
+  // Listen for status changes with debouncing
   console.log('👂 Setting up status listener...');
+  let updateTimeout;
   database.ref('status').on('value', async (snapshot) => {
-    console.log('🔄 Status update received, snapshot:', snapshot.val());
-    await updateOnlineUsersList(snapshot);
+    console.log('🔄 Status update received');
+
+    // Debounce updates to avoid too frequent refreshes
+    clearTimeout(updateTimeout);
+    updateTimeout = setTimeout(async () => {
+      await updateOnlineUsersList(snapshot);
+    }, 500); // Wait 500ms before updating
   }, (error) => {
     console.error('❌ Error listening to status:', error);
   });
@@ -5579,20 +5626,18 @@ function initOnlineUsersList() {
   console.log('✅ Online users list listener set up successfully');
 }
 
+// Cache for online users list to avoid unnecessary re-renders
+let lastOnlineUsersHTML = '';
+
 async function updateOnlineUsersList(statusSnapshot) {
   const onlineUsersContainer = document.getElementById('onlineUsersList');
-  console.log('📋 Updating online users list, container:', onlineUsersContainer);
 
   if (!onlineUsersContainer) {
-    console.error('❌ Online users container not found!');
     return;
   }
 
   // Add loading state with fade out animation
   const isFirstLoad = onlineUsersContainer.querySelector('.loading-text');
-  if (isFirstLoad) {
-    onlineUsersContainer.classList.add('loading-fade-out');
-  }
 
   const onlineUsers = [];
 
@@ -5607,9 +5652,7 @@ async function updateOnlineUsersList(statusSnapshot) {
     }
   });
 
-  console.log('👥 Found online users:', onlineUsers.length);
-
-  // Get user data for online users - use cache first
+  // Get user data for online users - use cache first (most will be cached)
   const usersData = await Promise.all(onlineUsers.map(async (user) => {
     // Check cache first
     if (userCache.has(user.uid)) {
@@ -5634,19 +5677,17 @@ async function updateOnlineUsersList(statusSnapshot) {
     };
   }));
 
-  console.log('📊 User data loaded:', usersData);
-
-  // Wait for fade out animation if it's first load
-  if (isFirstLoad) {
-    await new Promise(resolve => setTimeout(resolve, 300));
-  }
-
   // Update display
   if (usersData.length === 0) {
-    onlineUsersContainer.innerHTML = '<div class="no-online-users">No users online</div>';
-    console.log('⚠️ No users online');
-    onlineUsersContainer.classList.remove('loading-fade-out');
-    onlineUsersContainer.classList.add('content-fade-in');
+    const newHTML = '<div class="no-online-users">No users online</div>';
+    if (lastOnlineUsersHTML !== newHTML) {
+      onlineUsersContainer.innerHTML = newHTML;
+      lastOnlineUsersHTML = newHTML;
+    }
+    if (isFirstLoad) {
+      onlineUsersContainer.classList.remove('loading-fade-out');
+      onlineUsersContainer.classList.add('content-fade-in');
+    }
     return;
   }
 
@@ -5660,22 +5701,28 @@ async function updateOnlineUsersList(statusSnapshot) {
     return `<span class="online-user-item ${isAdmin ? 'admin' : ''}">${username}</span>`;
   }).join(', ');
 
-  onlineUsersContainer.innerHTML = `
+  const newHTML = `
     <div class="online-users-header">
       <strong>Online:</strong> ${formattedUsers}
     </div>
   `;
 
-  // Remove loading class and add fade in animation
-  onlineUsersContainer.classList.remove('loading-fade-out');
-  onlineUsersContainer.classList.add('content-fade-in');
+  // Only update DOM if content changed
+  if (lastOnlineUsersHTML !== newHTML) {
+    onlineUsersContainer.innerHTML = newHTML;
+    lastOnlineUsersHTML = newHTML;
+  }
 
-  // Remove animation class after animation completes
-  setTimeout(() => {
-    onlineUsersContainer.classList.remove('content-fade-in');
-  }, 500);
+  // Remove loading class and add fade in animation only on first load
+  if (isFirstLoad) {
+    onlineUsersContainer.classList.remove('loading-fade-out');
+    onlineUsersContainer.classList.add('content-fade-in');
 
-  console.log('✅ Online users list updated');
+    // Remove animation class after animation completes
+    setTimeout(() => {
+      onlineUsersContainer.classList.remove('content-fade-in');
+    }, 500);
+  }
 }
 
 // ============================================
