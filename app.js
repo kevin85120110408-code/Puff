@@ -357,6 +357,8 @@ function showWarning(message) {
 
 // Real-time Email Verification Modal
 function showEmailVerificationModal(user) {
+  devLog('🔔 showEmailVerificationModal called for user:', user.email);
+
   const customModalOverlay = document.getElementById('customModalOverlay');
   const customModal = document.getElementById('customModal');
   const customModalIcon = document.getElementById('customModalIcon');
@@ -364,9 +366,15 @@ function showEmailVerificationModal(user) {
   const customModalMessage = document.getElementById('customModalMessage');
   const customModalButtons = document.getElementById('customModalButtons');
 
+  if (!customModalOverlay || !customModal) {
+    console.error('❌ Modal elements not found!');
+    return;
+  }
+
   // Set content
   customModalIcon.textContent = '📧';
   customModalTitle.textContent = 'Verify Your Email';
+  devLog('✅ Modal content set');
   customModalMessage.innerHTML = `
     <p>We've sent a verification email to <strong>${user.email}</strong></p>
     <p>Please check your inbox and click the verification link.</p>
@@ -395,8 +403,10 @@ function showEmailVerificationModal(user) {
   `;
 
   // Show modal
+  devLog('📧 Showing verification modal...');
   customModalOverlay.classList.add('active');
   customModal.classList.add('active');
+  devLog('✅ Modal should be visible now');
 
   // Start real-time verification check
   let verificationCheckInterval = setInterval(async () => {
@@ -527,11 +537,17 @@ auth.onAuthStateChanged(async (user) => {
   if (user) {
     currentUser = user;
 
+    devLog('🔔 auth.onAuthStateChanged triggered');
+    devLog('  - isWaitingForEmailVerification:', isWaitingForEmailVerification);
+    devLog('  - user.emailVerified:', user.emailVerified);
+
     // If waiting for email verification, don't proceed to forum
     if (isWaitingForEmailVerification && !user.emailVerified) {
-      devLog('Waiting for email verification, not loading forum yet');
+      devLog('⏸️ Waiting for email verification, not loading forum yet');
       return;
     }
+
+    devLog('✅ Proceeding to load forum');
 
     const userRef = database.ref(`users/${user.uid}`);
     const snapshot = await userRef.once('value');
@@ -816,10 +832,14 @@ registerBtn.addEventListener('click', async () => {
       handleCodeInApp: false
     });
 
+    devLog('📧 Verification email sent');
+
     // Set flag to prevent auto-login
     isWaitingForEmailVerification = true;
+    devLog('🚫 Set isWaitingForEmailVerification = true');
 
     // Show verification waiting modal with real-time detection
+    devLog('📧 Calling showEmailVerificationModal...');
     showEmailVerificationModal(user);
 
     // Re-enable button
