@@ -1882,6 +1882,9 @@ window.openPrivateMessage = function(userId, username) {
   // Load messages
   loadPrivateMessages(chatId);
 
+  // Mark all messages in this chat as read
+  markChatAsRead(chatId);
+
   // Enter to send
   document.getElementById('pmInput').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
@@ -1938,6 +1941,36 @@ window.sendPrivateMessage = async function(chatId, recipientId) {
 // Store current PM listener ID for cleanup
 let currentPMListenerId = null;
 
+// Mark all messages in a chat as read
+async function markChatAsRead(chatId) {
+  if (!currentUser) return;
+
+  try {
+    const messagesSnapshot = await database.ref(`privateMessages/${chatId}`).once('value');
+    const messages = messagesSnapshot.val() || {};
+
+    const updates = {};
+    let hasUnread = false;
+
+    Object.entries(messages).forEach(([msgId, msg]) => {
+      // Mark as read if it's sent to current user and not already read
+      if (msg.to === currentUser.uid && msg.read !== true) {
+        updates[`${msgId}/read`] = true;
+        hasUnread = true;
+      }
+    });
+
+    if (hasUnread) {
+      await database.ref(`privateMessages/${chatId}`).update(updates);
+      devLog(`✅ Marked ${Object.keys(updates).length} messages as read in chat ${chatId}`);
+      // Update badge after marking as read
+      setTimeout(() => updateInboxBadge(), 300);
+    }
+  } catch (error) {
+    console.error('Failed to mark chat as read:', error);
+  }
+}
+
 function loadPrivateMessages(chatId) {
   const container = document.getElementById('pmMessages');
   if (!container) return;
@@ -1967,9 +2000,11 @@ function loadPrivateMessages(chatId) {
     container.appendChild(msgEl);
     container.scrollTop = container.scrollHeight;
 
-    // Mark as read if not own message
-    if (!isOwn && msg.read === false) {
+    // Mark as read if not own message - FIXED: Mark as read immediately when viewing
+    if (!isOwn && msg.read !== true) {
       database.ref(`privateMessages/${chatId}/${snapshot.key}/read`).set(true);
+      // Update badge after marking as read
+      setTimeout(() => updateInboxBadge(), 500);
     }
 
     // Show notification for new messages (not during initial load)
@@ -2224,11 +2259,21 @@ async function updateInboxBadge() {
 
     // Check each conversation for unread messages - OPTIMIZED: Use Promise.all
     const chatIds = Object.keys(conversations);
+
+    if (chatIds.length === 0) {
+      // No conversations, hide badge
+      const badge = document.getElementById('inboxBadge');
+      if (badge) {
+        badge.style.display = 'none';
+      }
+      return;
+    }
+
     const messagePromises = chatIds.map(chatId =>
       database.ref(`privateMessages/${chatId}`).once('value')
         .then(snapshot => ({ chatId, messages: snapshot.val() || {} }))
         .catch(error => {
-          console.error(`Error reading chat ${chatId}:`, error);
+          devLog(`Error reading chat ${chatId}:`, error);
           return { chatId, messages: {} };
         })
     );
@@ -2237,17 +2282,23 @@ async function updateInboxBadge() {
 
     for (const { messages } of results) {
       const messagesList = Object.values(messages);
+      // FIXED: More accurate unread count - check if message exists and has proper fields
       const unreadCount = messagesList.filter(msg =>
-        msg.to === currentUser.uid && !msg.read
+        msg &&
+        msg.to === currentUser.uid &&
+        msg.read !== true &&
+        msg.from !== currentUser.uid  // Don't count own messages
       ).length;
       totalUnread += unreadCount;
     }
+
+    devLog(`📬 Total unread messages: ${totalUnread}`);
 
     const badge = document.getElementById('inboxBadge');
     if (badge) {
       if (totalUnread > 0) {
         badge.textContent = totalUnread > 99 ? '99+' : totalUnread;
-        badge.style.display = 'inline-block';
+        badge.style.display = 'inline-flex';
       } else {
         badge.style.display = 'none';
       }

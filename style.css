@@ -6727,23 +6727,49 @@ body.dark-mode .pm-input-container .btn-primary:hover {
 }
 
 /* Messages Inbox */
+/* IMPROVED: Modern, subtle badge design */
 .inbox-badge {
-    background: #ff4444;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
-    border-radius: 12px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 600;
-    margin-left: 6px;
-    animation: pulse 2s infinite;
+    border-radius: 9px;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-left: 8px;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+    position: relative;
+    top: -1px;
+    letter-spacing: 0.3px;
 }
 
-@keyframes pulse {
+/* Subtle glow effect instead of pulse */
+.inbox-badge::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 11px;
+    opacity: 0;
+    z-index: -1;
+    animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
     0%, 100% {
-        opacity: 1;
+        opacity: 0;
+        transform: scale(1);
     }
     50% {
-        opacity: 0.7;
+        opacity: 0.3;
+        transform: scale(1.1);
     }
 }
 
