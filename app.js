@@ -378,6 +378,14 @@ function showEmailVerificationModal(user) {
   customModalMessage.innerHTML = `
     <p>We've sent a verification email to <strong>${user.email}</strong></p>
     <p>Please check your inbox and click the verification link.</p>
+    <div style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; padding: 12px; margin: 15px 0; text-align: left;">
+      <strong>⚠️ Important:</strong>
+      <ul style="margin: 8px 0 0 20px; font-size: 14px;">
+        <li>Don't refresh this page until you verify your email</li>
+        <li>If you refresh, you can login again with the same credentials</li>
+        <li>Check your spam folder if you don't see the email</li>
+      </ul>
+    </div>
     <p id="verificationStatus" style="margin-top: 15px; color: #666;">
       <span class="loading-spinner" style="display: inline-block; width: 16px; height: 16px; border: 2px solid #ddd; border-top-color: #007bff; border-radius: 50%; animation: spin 1s linear infinite;"></span>
       Waiting for verification...
@@ -745,7 +753,20 @@ loginBtn.addEventListener('click', async () => {
     const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
-    // No email verification check for login - allow all users
+    // Check if email is verified
+    if (!user.emailVerified) {
+      // Email not verified - show verification modal
+      devLog('📧 User email not verified, showing verification modal');
+      isWaitingForEmailVerification = true;
+      showEmailVerificationModal(user);
+
+      // Re-enable button
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Sign In';
+      return;
+    }
+
+    // Email verified - proceed with login
     if (rememberMe.checked) {
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     }
