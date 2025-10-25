@@ -1,12 +1,12 @@
 // Production mode detection
-const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const isProduction = false; // Force debug mode for testing
 
 // Conditional logging - only log in development
-const devLog = isProduction ? () => {} : console.log.bind(console);
-const devTime = isProduction ? () => {} : console.time.bind(console);
-const devTimeEnd = isProduction ? () => {} : console.timeEnd.bind(console);
+const devLog = console.log.bind(console);
+const devTime = console.time.bind(console);
+const devTimeEnd = console.timeEnd.bind(console);
 
-devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.9 🔥🔥🔥');
+devLog('🔥🔥🔥 APP.JS LOADED - VERSION 3.14 (DEBUG MODE) 🔥🔥🔥');
 
 // ===== CONSTANTS =====
 const PASSWORD_MIN_LENGTH = 6;
